@@ -1,27 +1,27 @@
 package handlers
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
-	"github.com/gin-gonic/gin"
-	
+
 	Config "github.com/m00lecule/stateful-scaling/config"
 	Models "github.com/m00lecule/stateful-scaling/models"
 )
 
 func CreateNote(c *gin.Context) {
-	var m  Models.Note
-	
+	var m Models.Note
+
 	err := c.BindJSON(&m)
 	if err != nil {
 		c.AbortWithError(400, err)
 	}
-	
+
 	if dbc := Config.DB.Create(&m); dbc.Error != nil {
 		c.AbortWithError(500, dbc.Error)
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"payload": m,
 	})

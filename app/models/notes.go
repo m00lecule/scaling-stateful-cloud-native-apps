@@ -1,8 +1,8 @@
 package models
 
 type Note struct {
-	ID       int
-	Content  string `json:"content" binding:"required"`
+	ID      int
+	Content string `json:"content" binding:"required"`
 }
 
 // func GetAllBook(b *[]Book) (err error) {
