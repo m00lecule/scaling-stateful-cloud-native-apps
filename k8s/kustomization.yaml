@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+namespace: stateful-app
+
+configMapGenerator:
+- name: app-configmap
+  envs:
+  - app/.env
+- name: postgres-configmap
+  envs:
+  - postgres/.env
+
+resources:
+  - namespace.yaml
+  - app/bundle.yaml
+  - postgres/bundle.yaml
+
+images:
+  - name: postgres
+    newName: postgres
+    newTag: '13.4'
+  - name: app
+    newName: localhost:5000/stateful-app
+    newTag: '1.0'
