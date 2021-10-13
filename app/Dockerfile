@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.17-alpine AS builder
 
 WORKDIR /go/src/github.com/m00lecule/stateful-scaling
 COPY . /go/src/github.com/m00lecule/stateful-scaling

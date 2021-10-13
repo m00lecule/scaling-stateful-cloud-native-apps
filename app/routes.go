@@ -1,10 +1,11 @@
 package main
 
-import "github.com/m00lecule/stateful-scaling/handlers"
+import Handlers "github.com/m00lecule/stateful-scaling/handlers"
 
 func initializeRoutes() {
 	notesRoutes := router.Group("/notes")
 	{
-		notesRoutes.GET("/:note_id", handlers.GetNote)
+		notesRoutes.POST("/", Handlers.CreateNote)
+		notesRoutes.GET("/:note_id", Handlers.GetNote)
 	}
 }

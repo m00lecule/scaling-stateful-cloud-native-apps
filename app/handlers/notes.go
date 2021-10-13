@@ -1,18 +1,30 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
-
 	"github.com/gin-gonic/gin"
-
-	"github.com/m00lecule/stateful-scaling/models"
+	
+	Config "github.com/m00lecule/stateful-scaling/config"
+	Models "github.com/m00lecule/stateful-scaling/models"
 )
 
-var notesList = []models.Note{
-	models.Note{ID: 1, Content: "Note 1 body"},
-	models.Note{ID: 2, Content: "Note 2 body"},
+func CreateNote(c *gin.Context) {
+	var m  Models.Note
+	
+	err := c.BindJSON(&m)
+	if err != nil {
+		c.AbortWithError(400, err)
+	}
+	
+	if dbc := Config.DB.Create(&m); dbc.Error != nil {
+		c.AbortWithError(500, dbc.Error)
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"payload": m,
+	})
 }
 
 func GetNote(c *gin.Context) {
@@ -33,11 +45,10 @@ func GetNote(c *gin.Context) {
 	}
 }
 
-func getNoteByID(id int) (*models.Note, error) {
-	for _, a := range notesList {
-		if a.ID == id {
-			return &a, nil
-		}
+func getNoteByID(id int) (*Models.Note, error) {
+	var n Models.Note
+	if err := Config.DB.Where("id = ?", id).First(&n).Error; err != nil {
+		return nil, err
 	}
-	return nil, errors.New("Note not found")
+	return &n, nil
 }
