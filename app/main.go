@@ -11,6 +11,7 @@ var router *gin.Engine
 func main() {
 
 	Config.InitDB()
+	Config.InitMetadata()
 
 	router = gin.Default()
 

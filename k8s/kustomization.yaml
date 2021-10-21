@@ -25,4 +25,4 @@ images:
     newTag: '13.4'
   - name: app
     newName: localhost:5000/stateful-app
-    newTag: '1.0'
+    newTag: '2.0'

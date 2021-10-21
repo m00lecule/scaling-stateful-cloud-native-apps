@@ -23,3 +23,22 @@ kubectl apply -f pv.yaml
 2. docker registry
 
 docker registry is required to inject own images into kind - [ref](https://kind.sigs.k8s.io/docs/user/local-registry/)
+
+```zsh
+docker run -d --restart=always -p "5000:5000" --name "registry" registry:2
+
+docker network connect "kind" "registry"
+```
+
+3. metallb
+
+```zsh
+kubectl get configmap kube-proxy -n kube-system -o yaml | \
+sed -e "s/strictARP: false/strictARP: true/" | \
+kubectl apply -f - -n kube-system
+```
+
+`kind/metallb/config` ip range
+```
+docker network inspect -f '{{.IPAM.Config}}' kind
+```
