@@ -42,3 +42,9 @@ kubectl apply -f - -n kube-system
 ```
 docker network inspect -f '{{.IPAM.Config}}' kind
 ```
+
+4. sticky sessions
+
+```zsh
+curl -I --cookie "INGRESSCOOKIE=fa2127219c775b67d5347fc68b10f36b|ad539e4d8906dea703a59719eea04c4d;" -X GET localhost/notes/5
+```
