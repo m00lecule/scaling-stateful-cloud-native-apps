@@ -23,7 +23,8 @@ func CreateNote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"payload": m,
+		"payload":  m,
+		"metadata": Config.Meta,
 	})
 }
 
@@ -33,7 +34,8 @@ func GetNote(c *gin.Context) {
 		if note, err := getNoteByID(noteID); err == nil {
 
 			c.JSON(http.StatusOK, gin.H{
-				"payload": note,
+				"payload":  note,
+				"metadata": Config.Meta,
 			})
 
 		} else {
