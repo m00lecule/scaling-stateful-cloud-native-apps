@@ -95,7 +95,7 @@ func UpdateCart(c *gin.Context) {
 				data = append(data, mockedData)
 			}
 
-			cart[id] = Models.ProductDetails{delta, data}
+			cart[id] = Models.ProductDetails{Count: delta, Data: data}
 		}
 	}
 
@@ -134,7 +134,7 @@ func GetCart(c *gin.Context) {
 		return
 	}
 
-	cart := Models.Cart{id, cartDetails}
+	cart := Models.Cart{ID: id, Content: cartDetails}
 
 	c.JSON(http.StatusOK, gin.H{
 		"payload":  cart,

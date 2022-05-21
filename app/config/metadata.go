@@ -16,7 +16,7 @@ type Metadata struct {
 func getMetadata() *Metadata {
 	m := Metadata{}
 	if err := env.Parse(&m); err != nil {
-		Log.Warn("%+v\n", err)
+		Log.Warn(err)
 	}
 	return &m
 }

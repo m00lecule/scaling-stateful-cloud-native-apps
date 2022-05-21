@@ -27,7 +27,7 @@ type RedisConfig struct {
 func getRedisConfig() *RedisConfig {
 	c := RedisConfig{}
 	if err := env.Parse(&c); err != nil {
-		Log.Warn("%+v\n", err)
+		Log.Warn(err)
 	}
 	return &c
 }
