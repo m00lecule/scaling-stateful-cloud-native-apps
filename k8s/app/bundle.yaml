@@ -56,18 +56,35 @@ spec:
       containers:
       - name: app
         image: app
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 500m
         envFrom:
         - configMapRef:
             name: app-configmap
         ports:
         - containerPort: 8080
           name: app
+      - name: cache
+        image: redis
+        command: ["redis-server"]
+        args: ["--save 60 1", "--loglevel warning"]
+        resources:
+          limits:
+            memory: 400Mi
+          requests:
+            memory: 400Mi
+        ports:
+        - containerPort: 6379
+          name: cache
         volumeMounts:
-        - name: app-data
-          mountPath: /usr/app
+        - name: cache-data
+          mountPath: /data
   volumeClaimTemplates:
   - metadata:
-      name: app-data
+      name: cache-data
     spec:
       accessModes: [ "ReadWriteOnce" ]
       #TODO

@@ -30,9 +30,17 @@ docker run -d --restart=always -p "5000:5000" --name "registry" registry:2
 docker network connect "kind" "registry"
 ```
 
+
+```zsh
+docker build . -t stateful-app:1.0
+docker tag stateful-app:1.0 localhost:5000/stateful-app:1.0
+docker push localhost:5000/stateful-app:1.0
+```
+
 3. metallb
 
 ```zsh
+kustomize build metallb | kubectl apply -f -
 kubectl get configmap kube-proxy -n kube-system -o yaml | \
 sed -e "s/strictARP: false/strictARP: true/" | \
 kubectl apply -f - -n kube-system
@@ -43,8 +51,17 @@ kubectl apply -f - -n kube-system
 docker network inspect -f '{{.IPAM.Config}}' kind
 ```
 
-4. sticky sessions
+4. nginx ingress
+
+```zsh
+kustomize build nginx-ingress | kubectl apply -f -
+```
+
+5. sticky sessions
 
 ```zsh
 curl -I --cookie "INGRESSCOOKIE=fa2127219c775b67d5347fc68b10f36b|ad539e4d8906dea703a59719eea04c4d;" -X GET localhost/notes/5
+
+curl -vvv -X PATCH --cookie 'INGRESSCOOKIE=4fe5ccb0dfcccdaf4b986f7b884a65ed|ad539e4d8906dea703a59719eea04c4d;' localhost/carts/1 -d @../test.json
 ```
+

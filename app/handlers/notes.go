@@ -1,56 +1,56 @@
 package handlers
 
-import (
-	"github.com/gin-gonic/gin"
-	"net/http"
-	"strconv"
+// import (
+// 	"github.com/gin-gonic/gin"
+// 	"net/http"
+// 	"strconv"
 
-	Config "github.com/m00lecule/stateful-scaling/config"
-	Models "github.com/m00lecule/stateful-scaling/models"
-)
+// 	Config "github.com/m00lecule/stateful-scaling/config"
+// 	Models "github.com/m00lecule/stateful-scaling/models"
+// )
 
-func CreateNote(c *gin.Context) {
-	var m Models.Note
+// func CreateNote(c *gin.Context) {
+// 	var m Models.Note
 
-	err := c.BindJSON(&m)
-	if err != nil {
-		c.AbortWithError(400, err)
-	}
+// 	err := c.BindJSON(&m)
+// 	if err != nil {
+// 		c.AbortWithError(400, err)
+// 	}
 
-	if dbc := Config.DB.Create(&m); dbc.Error != nil {
-		c.AbortWithError(500, dbc.Error)
-		return
-	}
+// 	if dbc := Config.DB.Create(&m); dbc.Error != nil {
+// 		c.AbortWithError(500, dbc.Error)
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"payload":  m,
-		"metadata": Config.Meta,
-	})
-}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"payload":  m,
+// 		"metadata": Config.Meta,
+// 	})
+// }
 
-func GetNote(c *gin.Context) {
-	if noteID, err := strconv.Atoi(c.Param("note_id")); err == nil {
+// func GetNote(c *gin.Context) {
+// 	if noteID, err := strconv.Atoi(c.Param("note_id")); err == nil {
 
-		if note, err := getNoteByID(noteID); err == nil {
+// 		if note, err := getNoteByID(noteID); err == nil {
 
-			c.JSON(http.StatusOK, gin.H{
-				"payload":  note,
-				"metadata": Config.Meta,
-			})
+// 			c.JSON(http.StatusOK, gin.H{
+// 				"payload":  note,
+// 				"metadata": Config.Meta,
+// 			})
 
-		} else {
-			c.AbortWithError(http.StatusNotFound, err)
-		}
+// 		} else {
+// 			c.AbortWithError(http.StatusNotFound, err)
+// 		}
 
-	} else {
-		c.AbortWithStatus(http.StatusNotFound)
-	}
-}
+// 	} else {
+// 		c.AbortWithStatus(http.StatusNotFound)
+// 	}
+// }
 
-func getNoteByID(id int) (*Models.Note, error) {
-	var n Models.Note
-	if err := Config.DB.Where("id = ?", id).First(&n).Error; err != nil {
-		return nil, err
-	}
-	return &n, nil
-}
+// func getNoteByID(id int) (*Models.Note, error) {
+// 	var n Models.Note
+// 	if err := Config.DB.Where("id = ?", id).First(&n).Error; err != nil {
+// 		return nil, err
+// 	}
+// 	return &n, nil
+// }

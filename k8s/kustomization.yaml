@@ -17,12 +17,15 @@ configMapGenerator:
 resources:
   - namespace.yaml
   - app/bundle.yaml
-  - postgres/bundle.yaml
+  # - postgres/bundle.yaml
 
 images:
   - name: postgres
     newName: postgres
     newTag: '13.4'
+  - name: redis
+    newName: redis
+    newTag: '7.0.0'
   - name: app
     newName: localhost:5000/stateful-app
-    newTag: '2.0'
+    newTag: '6.0'
