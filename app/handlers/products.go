@@ -31,7 +31,7 @@ func CreateProduct(c *gin.Context) {
 func GetProduct(c *gin.Context) {
 	if productID, err := strconv.Atoi(c.Param("id")); err == nil {
 		if product, err := getProductByID(productID); err == nil {
-
+			
 			c.JSON(http.StatusOK, gin.H{
 				"payload":  product,
 				"metadata": Config.Meta,
@@ -40,7 +40,6 @@ func GetProduct(c *gin.Context) {
 		} else {
 			c.AbortWithError(http.StatusNotFound, err)
 		}
-
 	} else {
 		c.AbortWithStatus(http.StatusNotFound)
 	}
