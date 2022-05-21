@@ -5,8 +5,6 @@ import (
 	"github.com/caarlos0/env/v6"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-
-	Models "github.com/m00lecule/stateful-scaling/models"
 )
 
 var DB *gorm.DB
@@ -35,7 +33,6 @@ func (c *PostgresConfig) getDSN() string {
 }
 
 func InitDB() {
-
 	c := getPostgresConfig()
 
 	var err error
@@ -45,7 +42,4 @@ func InitDB() {
 	if err != nil {
 		panic(err)
 	}
-
-	// Migrate the schema
-	DB.AutoMigrate(&Models.Note{})
 }
