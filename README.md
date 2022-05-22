@@ -7,8 +7,16 @@
 - `kustomize`
 - `kubectl`
 - `pre-commit`
+- `docker-compose`
+- `docker`
 
-## boostrap
+## setup docker-compose
+
+```zsh
+docker-compose up
+```
+
+## setup local kubernetes cluster
 
 1. kubernetes cluster
 
