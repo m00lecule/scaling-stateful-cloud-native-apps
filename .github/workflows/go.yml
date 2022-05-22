@@ -51,6 +51,11 @@ jobs:
         go vet ./...
         golint ./...
     
+    - name: hadolint
+      uses: hadolint/hadolint-action@v2.0.0
+      with:
+        dockerfile: app/Dockerfile
+
     # # Run testing on the code
     # - name: Run testing
     #   run: cd test && go test -v
