@@ -6,7 +6,7 @@ import (
 
 type Product struct {
 	ID    int    `gorm:"primaryKey"`
-	Name  string `json:"Name" binding:"required"`
+	Name  string `gorm:"unique;not null;type:varchar(100);default:null" json:"Name" binding:"required"`
 	Stock uint   `gorm:"check:possitive_stock,stock >= 0" json:"Stock"`
 }
 
@@ -18,6 +18,13 @@ func MigrateProducts() {
 
 func AddProduct(p *Product) (err error) {
 	if err = Config.DB.Create(p).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func DelProduct(p *Product) (err error) {
+	if err = Config.DB.Delete(p).Error; err != nil {
 		return err
 	}
 	return nil

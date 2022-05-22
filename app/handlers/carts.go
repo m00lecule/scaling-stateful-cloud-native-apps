@@ -13,8 +13,6 @@ import (
 	"sync"
 )
 
-// var sessionMux = &sync.Mutex{}
-
 var sessionMuxKey = "sessions"
 
 var cartMux = map[string]*sync.Mutex{}
@@ -59,6 +57,7 @@ func UpdateCart(c *gin.Context) {
 	err := c.BindJSON(&cartUpdate)
 
 	if err != nil {
+		Log.Error("Could not unmarshall data")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
 		return
 	}
