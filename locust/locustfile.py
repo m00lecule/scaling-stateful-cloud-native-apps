@@ -52,11 +52,10 @@ class AppUser(HttpUser):
 
     @task
     def cart_order_test(self):
-        print("test")
         response = self.client.post("/carts/")
         session_id = response.json()["payload"]
 
-        products = random.randint(1, 2)
+        products = random.randint(2, 4)
         orders_done = {}
 
         for i in range(products):
@@ -72,6 +71,8 @@ class AppUser(HttpUser):
             count = orders_done.get(product_id, 0)
 
             orders_done[product_id] = count + product_count
+
+            print(product_id, orders_done[product_id])
 
             response = self.client.patch(f"/carts/{session_id}", name="/carts", json=data)
 

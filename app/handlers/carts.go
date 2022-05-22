@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	Config "github.com/m00lecule/stateful-scaling/config"
 	Models "github.com/m00lecule/stateful-scaling/models"
@@ -30,6 +31,7 @@ func RandomString(n int) string {
 }
 
 func CreateCart(c *gin.Context) {
+	Log.Info("Will create new cart")
 	counter := global.GetCounter("app")
 	counter.Increment()
 
@@ -141,8 +143,8 @@ func GetCart(c *gin.Context) {
 }
 
 func SubmitCart(c *gin.Context) {
-	var p Models.Product
 	var cartDetails = make(map[string]Models.ProductDetails)
+	var p Models.Product
 
 	id := c.Param("id")
 	mx := cartMux[id]
@@ -164,14 +166,38 @@ func SubmitCart(c *gin.Context) {
 	tx := Config.DB.Begin()
 
 	for k, v := range cartDetails {
+		p = Models.Product{}
 		if err = tx.Where("id = ?", k).First(&p).Error; err != nil {
-			panic(err)
+			tx.Rollback()
+			mx.Unlock()
+			c.JSON(400, gin.H{"Error": err,
+				"metadata": Config.Meta,
+			})
+			return
 		}
 
+		if p.Stock < v.Count {
+			msg := fmt.Sprintf("Product %s [%d] Stock [%d] is lower than request [%d]", p.Name, p.ID, p.Stock, v.Count)
+			Log.Info(msg)
+			tx.Rollback()
+			mx.Unlock()
+			c.JSON(400, gin.H{"Error": err,
+				"metadata": Config.Meta,
+			})
+			return
+		}
 		p.Stock -= v.Count
 
+		Log.Info(p.Stock)
+
 		if err = tx.Save(p).Error; err != nil {
-			panic(err)
+			Log.Error(err)
+			tx.Rollback()
+			mx.Unlock()
+			c.JSON(400, gin.H{"Error": err,
+				"metadata": Config.Meta,
+			})
+			return
 		}
 	}
 

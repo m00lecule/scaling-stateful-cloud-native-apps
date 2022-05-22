@@ -17,6 +17,12 @@
 docker-compose up
 ```
 
+to rebuild app image:
+
+```zsh
+ docker-compose up --build app
+```
+
 ## setup local kubernetes cluster
 
 1. kubernetes cluster
