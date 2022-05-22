@@ -30,16 +30,6 @@ func GetOneProduct(p *Product, id int) (err error) {
 	return nil
 }
 
-// func PutOneProduct(p *Product, id string) (err error) {
-// 	config.DB.Save(p)
-// 	return nil
-// }
-
-// func DeleteProduct(p *Product, id string) (err error) {
-// 	config.DB.Where("id = ?", id).Delete(p)
-// 	return nil
-// }
-
 func (b *Product) TableName() string {
 	return "products"
 }

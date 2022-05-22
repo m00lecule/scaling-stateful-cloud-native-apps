@@ -112,7 +112,6 @@ func UpdateCart(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": Config.Meta,
-		// "payload":  cart,
 	})
 
 	mx.Unlock()

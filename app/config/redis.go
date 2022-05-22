@@ -37,10 +37,10 @@ func InitRedis() {
 
 	RDB = redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", Redis.Host, Redis.Port),
-		Password: Redis.Password, // no password set
+		Password: Redis.Password,
 		DB:       Redis.DB,
 	})
 
-	Pool = goredis.NewPool(RDB) // or, pool := redigo.NewPool(...)
+	Pool = goredis.NewPool(RDB)
 	Rs = redsync.New(Pool)
 }
