@@ -25,7 +25,7 @@ to rebuild app image:
 
 ## setup local kubernetes cluster
 
-1. kubernetes cluster
+1. kind
 
 ```zsh
 kind create cluster --name scaling-stateful --config cluster.yaml
@@ -35,7 +35,7 @@ kubectl cluster-info --context kind-scaling-stateful
 kubectl apply -f pv.yaml
 ```
 
-2. docker registry
+2. local docker registry
 
 docker registry is required to inject own images into kind - [ref](https://kind.sigs.k8s.io/docs/user/local-registry/)
 
@@ -45,17 +45,17 @@ docker run -d --restart=always -p "5000:5000" --name "registry" registry:2
 docker network connect "kind" "registry"
 ```
 
-
 ```zsh
 docker build . -t stateful-app:1.0
 docker tag stateful-app:1.0 localhost:5000/stateful-app:1.0
 docker push localhost:5000/stateful-app:1.0
 ```
 
-3. metallb
+3. kind kustomize
+3.1. metallb
 
 ```zsh
-kustomize build metallb | kubectl apply -f -
+kustomize build kind/metallb | kubectl apply -f -
 kubectl get configmap kube-proxy -n kube-system -o yaml | \
 sed -e "s/strictARP: false/strictARP: true/" | \
 kubectl apply -f - -n kube-system
@@ -66,10 +66,16 @@ kubectl apply -f - -n kube-system
 docker network inspect -f '{{.IPAM.Config}}' kind
 ```
 
-4. nginx ingress
+3.2. nginx ingress
 
 ```zsh
-kustomize build nginx-ingress | kubectl apply -f -
+kustomize build kind/nginx-ingress | kubectl apply -f -
+```
+
+4. app kustomize
+
+```zsh
+kustomize build kustomize/app | kubectl apply -f -
 ```
 
 5. sticky sessions
