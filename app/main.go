@@ -14,8 +14,8 @@ func main() {
 	Config.InitDB()
 
 	Models.MigrateProducts()
-
 	router = gin.Default()
+	router.Use(gin.Logger())
 	initializeRoutes()
 	router.Run()
 }

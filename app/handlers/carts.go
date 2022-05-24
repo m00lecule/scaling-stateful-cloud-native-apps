@@ -8,27 +8,12 @@ import (
 	Models "github.com/m00lecule/stateful-scaling/models"
 	"github.com/orian/counters/global"
 	Log "github.com/sirupsen/logrus"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"sync"
 )
 
-var sessionMuxKey = "sessions"
-
 var cartMux = map[string]*sync.Mutex{}
-
-var mockedData = RandomString(2)
-
-func RandomString(n int) string {
-	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
-}
 
 func CreateCart(c *gin.Context) {
 	Log.Info("Will create new cart")
@@ -42,9 +27,29 @@ func CreateCart(c *gin.Context) {
 
 	bytes, _ := json.Marshal(map[string]string{})
 
-	Config.RDB.Set(c.Request.Context(), idStr, bytes, 0).Err()
-	Config.RDB.Do(c.Request.Context(), "EXPIRE", id, Config.Redis.TTL).Err()
-	Config.RDB.SAdd(c.Request.Context(), sessionMuxKey, idStr).Err()
+	err := Config.RDB.Set(c.Request.Context(), idStr, bytes, 0).Err()
+
+	if err != nil {
+		Log.Error("Could not unmarshall data")
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
+		return
+	}
+
+	err = Config.RDB.Do(c.Request.Context(), "EXPIRE", id, Config.Redis.TTL).Err()
+
+	if err != nil {
+		Log.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
+		return
+	}
+
+	err = Config.RDB.SAdd(c.Request.Context(), Config.Meta.SessionMuxKey, idStr).Err()
+
+	if err != nil {
+		Log.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"payload":  idStr,
@@ -84,7 +89,7 @@ func UpdateCart(c *gin.Context) {
 			data := []string{}
 
 			for i := uint(0); i < value.Count; i++ {
-				data = append(data, mockedData)
+				data = append(data, Config.MockedData)
 			}
 
 			value.Data = data
@@ -93,7 +98,7 @@ func UpdateCart(c *gin.Context) {
 			data := []string{}
 
 			for i := uint(0); i < delta; i++ {
-				data = append(data, mockedData)
+				data = append(data, Config.MockedData)
 			}
 
 			cart[id] = Models.ProductDetails{Count: delta, Data: data}
@@ -102,7 +107,6 @@ func UpdateCart(c *gin.Context) {
 
 	bytes, err := json.Marshal(cart)
 
-	Log.Info()
 	err = Config.RDB.Set(c.Request.Context(), id, bytes, 0).Err()
 
 	if err != nil {
@@ -161,7 +165,7 @@ func SubmitCart(c *gin.Context) {
 		return
 	}
 
-	Log.Info(cartDetails)
+	Log.Debug(cartDetails)
 
 	tx := Config.DB.Begin()
 
@@ -178,17 +182,17 @@ func SubmitCart(c *gin.Context) {
 
 		if p.Stock < v.Count {
 			msg := fmt.Sprintf("Product %s [%d] Stock [%d] is lower than request [%d]", p.Name, p.ID, p.Stock, v.Count)
-			Log.Info(msg)
+			Log.Debug(msg)
 			tx.Rollback()
 			mx.Unlock()
-			c.JSON(400, gin.H{"Error": err,
+			c.JSON(444, gin.H{"Error": err,
 				"metadata": Config.Meta,
 			})
 			return
 		}
 		p.Stock -= v.Count
 
-		Log.Info(p.Stock)
+		Log.Debug(p.Stock)
 
 		if err = tx.Save(p).Error; err != nil {
 			Log.Error(err)
@@ -216,7 +220,7 @@ func SubmitCart(c *gin.Context) {
 	mx.Unlock()
 
 	delete(cartMux, id)
-	err = Config.RDB.SRem(c.Request.Context(), sessionMuxKey, id).Err()
+	err = Config.RDB.SRem(c.Request.Context(), Config.Meta.SessionMuxKey, id).Err()
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": Config.Meta,
