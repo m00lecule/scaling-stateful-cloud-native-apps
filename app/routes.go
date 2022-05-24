@@ -14,5 +14,6 @@ func initializeRoutes() {
 	{
 		productsRoutes.POST("/", Handlers.CreateProduct)
 		productsRoutes.GET("/:id", Handlers.GetProduct)
+		productsRoutes.DELETE("/:id", Handlers.DeleteProduct)
 	}
 }

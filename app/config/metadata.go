@@ -3,14 +3,17 @@ package config
 import (
 	"github.com/caarlos0/env/v6"
 	Log "github.com/sirupsen/logrus"
+	"math/rand"
 )
 
 var Meta *Metadata
+var MockedData string
 
 type Metadata struct {
-	Hostname  string `env:"HOSTNAME" envDefault:"stateful-app"`
-	LogLevel  string `env:"LOGLVL" envDefault:"debug"`
-	DataBytes int    `env:"DATABYTES" envDefault:"2560000"`
+	Hostname      string `env:"HOSTNAME" envDefault:"stateful-app"`
+	LogLevel      string `env:"LOGLVL" envDefault:"info"`
+	DataBytes     int    `env:"DATABYTES" envDefault:"2560000"`
+	SessionMuxKey string `env:"GLOBAL_MUXNAME" envDefault:"sessions"`
 }
 
 func getMetadata() *Metadata {
@@ -19,6 +22,16 @@ func getMetadata() *Metadata {
 		Log.Warn(err)
 	}
 	return &m
+}
+
+func randomString(n int) string {
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }
 
 func InitMetadata() {
@@ -31,4 +44,5 @@ func InitMetadata() {
 	} else {
 		Log.SetLevel(level)
 	}
+	MockedData = randomString(Meta.DataBytes)
 }

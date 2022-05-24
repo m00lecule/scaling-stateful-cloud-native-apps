@@ -31,9 +31,30 @@ func CreateProduct(c *gin.Context) {
 func GetProduct(c *gin.Context) {
 	if productID, err := strconv.Atoi(c.Param("id")); err == nil {
 		if product, err := getProductByID(productID); err == nil {
-			
+
 			c.JSON(http.StatusOK, gin.H{
 				"payload":  product,
+				"metadata": Config.Meta,
+			})
+
+		} else {
+			c.AbortWithError(http.StatusNotFound, err)
+		}
+	} else {
+		c.AbortWithStatus(http.StatusNotFound)
+	}
+}
+
+func DeleteProduct(c *gin.Context) {
+	if productID, err := strconv.Atoi(c.Param("id")); err == nil {
+		if product, err := getProductByID(productID); err == nil {
+			err = Models.DelProduct(product)
+
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+
+			c.JSON(http.StatusOK, gin.H{
 				"metadata": Config.Meta,
 			})
 
