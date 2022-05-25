@@ -9,6 +9,8 @@ import requests
 
 from locust import HttpUser, between, events, task
 
+from locust.clients import HttpSession
+
 TESTS_ID = uuid.uuid4()
 
 INF_WAIT = int(os.getenv("INF_WAIT", 1))
@@ -55,7 +57,7 @@ class AppUser(HttpUser):
     def cart_order_test(self):
         for _ in range(SEQUENCES):
             response = self.client.post("/carts/")
-            session_id = response.json()["payload"]
+            cart_id = response.json()["payload"]
 
             products = random.randint(2, 4)
             orders_done = {}
@@ -76,16 +78,23 @@ class AppUser(HttpUser):
 
                 print(product_id, orders_done[product_id])
 
-                response = self.client.patch(f"/carts/{session_id}", name="/carts", json=data)
+                response = self.client.patch(f"/carts/{cart_id}", name="/carts", json=data)
 
                 logging.info("Order resp code: %d", response.status_code)
 
+                response = self.client.get(f"/carts/{cart_id}")
+
+                curr_cart = response.json()["payload"]["Content"]
+                
+                for k,v in orders_done.items():
+                    assert v == curr_cart[str(k)]["Count"]               
+
                 time.sleep(10)
 
-            response = self.client.post(f"/carts/{session_id}/submit")
+            response = self.client.post(f"/carts/{cart_id}/submit")
             logging.info("Submit resp code: %s", response.status_code)
 
-            logging.info("ordered %s - %s", session_id, json.dumps(orders_done))
+            logging.info("ordered %s - %s", cart_id, json.dumps(orders_done))
 
         while INF_WAIT:
             time.sleep(1)
