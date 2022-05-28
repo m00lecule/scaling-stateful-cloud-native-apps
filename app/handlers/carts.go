@@ -13,8 +13,6 @@ import (
 	"sync"
 )
 
-var cartMux = map[string]*sync.Mutex{}
-
 func CreateCart(c *gin.Context) {
 	Log.Info("Will create new cart")
 	counter := global.GetCounter("app")
@@ -23,11 +21,19 @@ func CreateCart(c *gin.Context) {
 	id := counter.Value()
 	idStr := strconv.FormatInt(id, 10)
 
-	cartMux[idStr] = &sync.Mutex{}
+	Config.CartMux[idStr] = &sync.Mutex{}
+
+	err := Config.RDB.SAdd(c.Request.Context(), Config.Meta.SessionMuxKey, idStr).Err()
+
+	if err != nil {
+		Log.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
+		return
+	}
 
 	bytes, _ := json.Marshal(map[string]string{})
 
-	err := Config.RDB.Set(c.Request.Context(), idStr, bytes, 0).Err()
+	err = Config.RDB.Set(c.Request.Context(), idStr, bytes, 0).Err()
 
 	if err != nil {
 		Log.Error("Could not unmarshall data")
@@ -36,14 +42,6 @@ func CreateCart(c *gin.Context) {
 	}
 
 	err = Config.RDB.Do(c.Request.Context(), "EXPIRE", id, Config.Redis.TTL).Err()
-
-	if err != nil {
-		Log.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
-		return
-	}
-
-	err = Config.RDB.SAdd(c.Request.Context(), Config.Meta.SessionMuxKey, idStr).Err()
 
 	if err != nil {
 		Log.Error(err)
@@ -73,7 +71,7 @@ func UpdateCart(c *gin.Context) {
 
 	id := c.Param("id")
 
-	mx := cartMux[id]
+	mx := Config.CartMux[id]
 
 	mx.Lock()
 
@@ -151,7 +149,7 @@ func SubmitCart(c *gin.Context) {
 	var p Models.Product
 
 	id := c.Param("id")
-	mx := cartMux[id]
+	mx := Config.CartMux[id]
 
 	mx.Lock()
 
@@ -165,7 +163,7 @@ func SubmitCart(c *gin.Context) {
 		return
 	}
 
-	Log.Debug(cartDetails)
+	// Log.Debug(cartDetails)
 
 	tx := Config.DB.Begin()
 
@@ -192,7 +190,7 @@ func SubmitCart(c *gin.Context) {
 		}
 		p.Stock -= v.Count
 
-		Log.Debug(p.Stock)
+		// Log.Debug(p.Stock)
 
 		if err = tx.Save(p).Error; err != nil {
 			Log.Error(err)
@@ -219,7 +217,7 @@ func SubmitCart(c *gin.Context) {
 
 	mx.Unlock()
 
-	delete(cartMux, id)
+	delete(Config.CartMux, id)
 	err = Config.RDB.SRem(c.Request.Context(), Config.Meta.SessionMuxKey, id).Err()
 
 	c.JSON(http.StatusOK, gin.H{

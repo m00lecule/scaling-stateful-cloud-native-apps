@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"github.com/caarlos0/env/v6"
 	"github.com/go-redis/redis/v8"
@@ -8,6 +9,8 @@ import (
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
 	Log "github.com/sirupsen/logrus"
+	"sync"
+	"time"
 )
 
 var RDB *redis.Client
@@ -43,4 +46,17 @@ func InitRedis() {
 
 	Pool = goredis.NewPool(RDB)
 	Rs = redsync.New(Pool)
+
+	for i := 0; i < 10; i += 1 {
+		muxList, err := RDB.SMembers(context.Background(), Meta.SessionMuxKey).Result()
+
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		for _, val := range muxList {
+			CartMux[val] = &sync.Mutex{}
+		}
+	}
 }

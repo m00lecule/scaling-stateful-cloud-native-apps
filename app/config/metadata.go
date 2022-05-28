@@ -4,15 +4,17 @@ import (
 	"github.com/caarlos0/env/v6"
 	Log "github.com/sirupsen/logrus"
 	"math/rand"
+	"sync"
 )
 
 var Meta *Metadata
 var MockedData string
+var CartMux = map[string]*sync.Mutex{}
 
 type Metadata struct {
 	Hostname      string `env:"HOSTNAME" envDefault:"stateful-app"`
 	LogLevel      string `env:"LOGLVL" envDefault:"info"`
-	DataBytes     int    `env:"DATABYTES" envDefault:"2560000"`
+	DataBytes     int    `env:"DATABYTES" envDefault:"512"`
 	SessionMuxKey string `env:"GLOBAL_MUXNAME" envDefault:"sessions"`
 }
 
