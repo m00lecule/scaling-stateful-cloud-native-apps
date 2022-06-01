@@ -21,7 +21,11 @@ func CreateCart(c *gin.Context) {
 	id := counter.Value()
 	idStr := strconv.FormatInt(id, 10)
 
+	Config.CartMuxMutex.Lock()
+
 	Config.CartMux[idStr] = &sync.Mutex{}
+
+	Config.CartMuxMutex.Unlock()
 
 	err := Config.RDB.SAdd(c.Request.Context(), Config.Meta.SessionMuxKey, idStr).Err()
 
@@ -71,7 +75,9 @@ func UpdateCart(c *gin.Context) {
 
 	id := c.Param("id")
 
+	Config.CartMuxMutex.RLock()
 	mx := Config.CartMux[id]
+	Config.CartMuxMutex.RUnlock()
 
 	mx.Lock()
 
@@ -149,7 +155,9 @@ func SubmitCart(c *gin.Context) {
 	var p Models.Product
 
 	id := c.Param("id")
+	Config.CartMuxMutex.RLock()
 	mx := Config.CartMux[id]
+	Config.CartMuxMutex.RUnlock()
 
 	mx.Lock()
 
@@ -190,8 +198,6 @@ func SubmitCart(c *gin.Context) {
 		}
 		p.Stock -= v.Count
 
-		// Log.Debug(p.Stock)
-
 		if err = tx.Save(p).Error; err != nil {
 			Log.Error(err)
 			tx.Rollback()
@@ -217,7 +223,10 @@ func SubmitCart(c *gin.Context) {
 
 	mx.Unlock()
 
+	Config.CartMuxMutex.Lock()
 	delete(Config.CartMux, id)
+	Config.CartMuxMutex.Unlock()
+
 	err = Config.RDB.SRem(c.Request.Context(), Config.Meta.SessionMuxKey, id).Err()
 
 	c.JSON(http.StatusOK, gin.H{

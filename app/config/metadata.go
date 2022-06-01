@@ -7,9 +7,12 @@ import (
 	"sync"
 )
 
-var Meta *Metadata
-var MockedData string
-var CartMux = map[string]*sync.Mutex{}
+var (
+	Meta *Metadata
+	MockedData string
+	CartMuxMutex = sync.RWMutex{}
+	CartMux = map[string]*sync.Mutex{}
+) 
 
 type Metadata struct {
 	Hostname      string `env:"HOSTNAME" envDefault:"stateful-app"`
