@@ -3,6 +3,8 @@ package main
 import Handlers "github.com/m00lecule/stateful-scaling/handlers"
 
 func initializeRoutes() {
+	router.GET("/health", Handlers.GetHealth)
+
 	cartsRoutes := router.Group("/carts")
 	{
 		cartsRoutes.POST("/", Handlers.CreateCart)
