@@ -1,0 +1,139 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: "app-alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/load-balancer-name: "stateful-app-alb"
+    alb.ingress.kubernetes.io/healthcheck-path: '/health'
+    alb.ingress.kubernetes.io/inbound-cidrs: '10.205.0.0/18'
+    alb.ingress.kubernetes.io/target-type: 'ip'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=300
+    alb.ingress.kubernetes.io/scheme: 'internal'
+    alb.ingress.kubernetes.io/success-codes: '200'
+    alb.ingress.kubernetes.io/tags: Role=stateful-app
+    external-dns.alpha.kubernetes.io/hostname: stateful-app.wxto2.de.devops.private.abovecloud.io
+  labels:
+    app: "app"
+spec:
+  rules:
+   - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 8080
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: app
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 25
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 50
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  ports:
+  - port: 8080
+    name: app
+  clusterIP: None
+  selector:
+    app: app
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: app
+  namespace: stateful-app
+spec:
+  serviceName: "app"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+      - name: app
+        image: app-eks
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          timeoutSeconds: 10
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 200m
+            memory: 400Mi
+          requests:
+            cpu: 200m
+            memory: 400Mi
+        envFrom:
+        - configMapRef:
+            name: app-configmap
+        ports:
+        - containerPort: 8080
+          name: app
+      - name: cache
+        image: redis
+        command: ["redis-server"]
+        args: ["--save 60 1", "--loglevel warning"]
+        readinessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 400Mi
+          requests:
+            cpu: 100m
+            memory: 400Mi
+        ports:
+        - containerPort: 6379
+          name: cache
+        volumeMounts:
+        - name: cache-data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: cache-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: gp2
+      resources:
+        requests:
+          storage: 10Gi
