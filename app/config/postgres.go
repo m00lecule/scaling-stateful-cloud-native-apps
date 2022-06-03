@@ -10,12 +10,14 @@ import (
 var DB *gorm.DB
 
 type PostgresConfig struct {
-	Host     string `env:"POSTGRES_HOST" envDefault:"localhost"`
-	Port     int    `env:"POSTGRES_PORT" envDefault:"5432"`
-	User     string `env:"POSTGRES_USER" envDefault:"gorm"`
-	Password string `env:"POSTGRES_PASSWORD" envDefault:"gorm"`
-	Database string `env:"POSTGRES_DB" envDefault:"gorm"`
-	SSLMode  string `env:"POSTGRES_SSL_MODE" envDefault:"disable"`
+	Host         string `env:"POSTGRES_HOST" envDefault:"localhost"`
+	Port         int    `env:"POSTGRES_PORT" envDefault:"5432"`
+	User         string `env:"POSTGRES_USER" envDefault:"gorm"`
+	Password     string `env:"POSTGRES_PASSWORD" envDefault:"gorm"`
+	Database     string `env:"POSTGRES_DB" envDefault:"gorm"`
+	SSLMode      string `env:"POSTGRES_SSL_MODE" envDefault:"disable"`
+	MaxCons      int    `env:"POSTGRES_MAX_CONS" envDefault:"20"`
+	MaxIdleCons  int    `env:"POSTGRES_MAX_IDLE_CONS" envDefault:"5"`
 }
 
 func getPostgresConfig() *PostgresConfig {
@@ -38,6 +40,19 @@ func InitDB() {
 	var err error
 	dsn := c.getDSN()
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+
+	if err != nil {
+		panic(err)
+	}
+
+	conf, err := DB.DB()
+	
+	if err != nil {
+		panic(err)
+	}
+
+	conf.SetMaxIdleConns(c.MaxIdleCons)
+	conf.SetMaxOpenConns(c.MaxCons)
 
 	if err != nil {
 		panic(err)

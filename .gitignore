@@ -3,3 +3,4 @@ __pycache__
 kind-pv/
 app
 !app/
+app/stateful=-scaling
