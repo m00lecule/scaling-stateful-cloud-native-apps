@@ -9,15 +9,15 @@ namespace: stateful-app
 configMapGenerator:
 - name: app-configmap
   envs:
-  - app/.env
+  - app-eks/.env
 - name: postgres-configmap
   envs:
   - postgres/.env
 
 resources:
   - namespace.yaml
-  - app/bundle.yaml
-  # - postgres/bundle.yaml
+  - app-eks/bundle.yaml
+  - postgres/bundle.yaml
 
 images:
   - name: postgres
@@ -29,3 +29,4 @@ images:
   - name: app
     newName: localhost:5000/stateful-app
     newTag: '6.0'
+
