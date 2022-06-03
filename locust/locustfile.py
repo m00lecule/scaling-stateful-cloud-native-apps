@@ -13,11 +13,11 @@ from locust.clients import HttpSession
 
 TESTS_ID = uuid.uuid4()
 
-INF_WAIT = int(os.getenv("INF_WAIT", 1))
-PRODUCTS_NO = int(os.getenv("PRODUCT_NO", 4))
+INF_WAIT = int(os.getenv("INF_WAIT", 0))
+PRODUCTS_NO = int(os.getenv("PRODUCT_NO", 200))
 SEQUENCES = int(os.getenv("SEQUENCES", 1))
 
-PRODUCTS_DATA = [ {"name": f"p{p}-{TESTS_ID}", "stock": 10000} for p in range(PRODUCTS_NO) ]
+PRODUCTS_DATA = [ {"name": f"p{p}-{TESTS_ID}", "stock": 10000000000000} for p in range(PRODUCTS_NO) ]
 
 logging.basicConfig(level=logging.INFO)
 
@@ -89,12 +89,13 @@ class AppUser(HttpUser):
                 for k,v in orders_done.items():
                     assert v == curr_cart[str(k)]["Count"]               
 
-                time.sleep(10)
+                time.sleep(3)
 
             response = self.client.post(f"/carts/{cart_id}/submit")
             logging.info("Submit resp code: %s", response.status_code)
 
             logging.info("ordered %s - %s", cart_id, json.dumps(orders_done))
+            self.client.cookies.clear()
 
         while INF_WAIT:
             time.sleep(1)

@@ -29,6 +29,4 @@ images:
   - name: app
     newName: localhost:5000/stateful-app
     newTag: '6.0'
-  - name: app-eks
-    newName: 904979830020.dkr.ecr.eu-central-1.amazonaws.com/stateful-app
-    newTag: '11.0'
+

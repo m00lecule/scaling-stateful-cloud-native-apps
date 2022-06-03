@@ -13,7 +13,6 @@ metadata:
     alb.ingress.kubernetes.io/scheme: 'internal'
     alb.ingress.kubernetes.io/success-codes: '200'
     alb.ingress.kubernetes.io/tags: Role=stateful-app
-    external-dns.alpha.kubernetes.io/hostname: stateful-app.wxto2.de.devops.private.abovecloud.io
   labels:
     app: "app"
 spec:
