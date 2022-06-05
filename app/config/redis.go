@@ -12,11 +12,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var RDB *redis.Client
-var Redis *RedisConfig
-
-var Pool redsyncredis.Pool
-var Rs *redsync.Redsync
+var (
+	RDB   *redis.Client
+	Redis *RedisConfig
+	Pool  redsyncredis.Pool
+	Rs    *redsync.Redsync
+)
 
 type RedisConfig struct {
 	Host     string `env:"REDIS_HOST" envDefault:"localhost"`
