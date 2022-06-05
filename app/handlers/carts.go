@@ -8,12 +8,17 @@ import (
 	Models "github.com/m00lecule/stateful-scaling/models"
 	"github.com/orian/counters/global"
 	Log "github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel"
 	"net/http"
 	"strconv"
 	"sync"
 )
 
+var tracer = otel.Tracer("gin-server")
+
 func CreateCart(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	Log.Info("Will create new cart")
 	counter := global.GetCounter("app")
 	counter.Increment()
@@ -26,6 +31,8 @@ func CreateCart(c *gin.Context) {
 	Config.CartMux[idStr] = &sync.Mutex{}
 
 	Config.CartMuxMutex.Unlock()
+
+	ctx, redisSpan := tracer.Start(ctx, "redis")
 
 	err := Config.RDB.SAdd(c.Request.Context(), Config.Meta.SessionMuxKey, idStr).Err()
 
@@ -47,6 +54,8 @@ func CreateCart(c *gin.Context) {
 
 	err = Config.RDB.Do(c.Request.Context(), "EXPIRE", id, Config.Redis.TTL).Err()
 
+	redisSpan.End()
+
 	if err != nil {
 		Log.Error(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": Config.Meta})
@@ -61,6 +70,9 @@ func CreateCart(c *gin.Context) {
 
 func UpdateCart(c *gin.Context) {
 	var cartUpdate Models.CartUpdate
+
+	ctx := c.Request.Context()
+
 	var cart = make(map[string]Models.ProductDetails)
 
 	err := c.BindJSON(&cartUpdate)
@@ -111,7 +123,11 @@ func UpdateCart(c *gin.Context) {
 
 	bytes, err := json.Marshal(cart)
 
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+
 	err = Config.RDB.Set(c.Request.Context(), id, bytes, 0).Err()
+
+	redisSpan.End()
 
 	if err != nil {
 		Log.Warn("Could not connect to redis")
@@ -129,9 +145,15 @@ func UpdateCart(c *gin.Context) {
 func GetCart(c *gin.Context) {
 	var cartDetails = make(map[string]Models.ProductDetails)
 
+	ctx := c.Request.Context()
+
 	id := c.Param("id")
 
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+
 	cartDetailsBytes, err := Config.RDB.Get(c.Request.Context(), id).Result()
+
+	redisSpan.End()
 
 	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
 
@@ -154,6 +176,8 @@ func SubmitCart(c *gin.Context) {
 	var cartDetails = make(map[string]Models.ProductDetails)
 	var p Models.Product
 
+	ctx := c.Request.Context()
+
 	id := c.Param("id")
 	Config.CartMuxMutex.RLock()
 	mx := Config.CartMux[id]
@@ -161,7 +185,11 @@ func SubmitCart(c *gin.Context) {
 
 	mx.Lock()
 
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+
 	cartDetailsBytes, err := Config.RDB.Get(c.Request.Context(), id).Result()
+
+	redisSpan.End()
 
 	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
 
@@ -171,7 +199,7 @@ func SubmitCart(c *gin.Context) {
 		return
 	}
 
-	// Log.Debug(cartDetails)
+	ctx, postgresSpan := tracer.Start(ctx, "postgres")
 
 	tx := Config.DB.Begin()
 
@@ -210,6 +238,8 @@ func SubmitCart(c *gin.Context) {
 	}
 
 	tx.Commit()
+
+	postgresSpan.End()
 
 	_, err = Config.RDB.Do(c.Request.Context(), "DEL", id).Result()
 
