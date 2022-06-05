@@ -4,19 +4,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	Config "github.com/m00lecule/stateful-scaling/config"
-	Models "github.com/m00lecule/stateful-scaling/models"
+	config "github.com/m00lecule/stateful-scaling/config"
+	models "github.com/m00lecule/stateful-scaling/models"
 )
 
 var router *gin.Engine
 
 func main() {
-	Config.InitMetadata()
-	Config.InitRedis()
-	Config.InitDB()
-	Models.MigrateProducts()
+	config.InitMetadata()
+	config.InitRedis()
+	config.InitDB()
+	models.MigrateModels()
 	
-	tp, _ := Config.TracerProvider()
+	tp, _ := config.TracerProvider()
 
 	otel.SetTracerProvider(tp)
 	

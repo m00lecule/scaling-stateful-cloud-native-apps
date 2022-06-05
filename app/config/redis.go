@@ -8,7 +8,7 @@ import (
 	"github.com/go-redsync/redsync/v4"
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
-	Log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
@@ -30,7 +30,7 @@ type RedisConfig struct {
 func getRedisConfig() *RedisConfig {
 	c := RedisConfig{}
 	if err := env.Parse(&c); err != nil {
-		Log.Warn(err)
+		log.Warn(err)
 	}
 	return &c
 }
