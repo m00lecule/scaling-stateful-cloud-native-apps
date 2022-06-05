@@ -18,9 +18,9 @@ import (
 var tracer = otel.Tracer("gin-server")
 
 func CreateCart(c *gin.Context) {
-	ctx := c.Request.Context()
-
 	var cart models.Cart = models.Cart{OwnedBy: config.Meta.Hostname}
+
+	ctx := c.Request.Context()
 
 	log.Info("Will create new cart")
 
@@ -70,11 +70,10 @@ func CreateCart(c *gin.Context) {
 }
 
 func UpdateCart(c *gin.Context) {
+	var cart = make(map[string]models.ProductDetails)
 	var cartUpdate models.CartUpdate
 
 	ctx := c.Request.Context()
-
-	var cart = make(map[string]models.ProductDetails)
 
 	err := c.BindJSON(&cartUpdate)
 

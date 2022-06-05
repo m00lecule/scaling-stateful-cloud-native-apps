@@ -11,6 +11,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	cartsTableName = "carts"
+)
+
 type ProductDetails struct {
 	Count uint
 	Data  []string
@@ -28,10 +32,6 @@ type Cart struct {
 	OwnedBy     string                    `gorm:"not null; type:varchar(16); default:false"`
 	CreatedAt   time.Time
 }
-
-var (
-	cartsTableName = "carts"
-)
 
 func (b *Cart) TableName() string {
 	return cartsTableName
