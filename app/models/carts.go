@@ -10,6 +10,8 @@ type CartUpdate struct {
 }
 
 type Cart struct {
-	ID      string
-	Content map[string]ProductDetails
+	ID          uint                      `gorm:"primaryKey"`
+	Content     map[string]ProductDetails `gorm:"-"`
+	IsOrphan    bool                      `gorm:"not null; type:boolean; default:false"`
+	IsSubmitted bool                      `gorm:"not null; type:boolean; default:false"`
 }

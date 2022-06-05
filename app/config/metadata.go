@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/caarlos0/env/v6"
-	Log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync"
 )
@@ -24,7 +24,7 @@ type Metadata struct {
 func getMetadata() *Metadata {
 	m := Metadata{}
 	if err := env.Parse(&m); err != nil {
-		Log.Warn(err)
+		log.Warn(err)
 	}
 	return &m
 }
@@ -41,13 +41,13 @@ func randomString(n int) string {
 
 func InitMetadata() {
 	Meta = getMetadata()
-	level, err := Log.ParseLevel(Meta.LogLevel)
+	level, err := log.ParseLevel(Meta.LogLevel)
 
 	if err != nil {
-		Log.SetLevel(Log.InfoLevel)
-		Log.Info("Will set default loglevel - INFO")
+		log.SetLevel(log.InfoLevel)
+		log.Info("Will set default loglevel - INFO")
 	} else {
-		Log.SetLevel(level)
+		log.SetLevel(level)
 	}
 	MockedData = randomString(Meta.DataBytes)
 }
