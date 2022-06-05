@@ -48,9 +48,10 @@ jobs:
     - name: Run vet & lint
       run: |
         cd app
+        go fmt ./...
         go vet ./...
         golint ./...
-    
+
     - name: hadolint
       uses: hadolint/hadolint-action@v2.0.0
       with:

@@ -3,27 +3,29 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	config "github.com/m00lecule/stateful-scaling/config"
-	models "github.com/m00lecule/stateful-scaling/models"
-	log "github.com/sirupsen/logrus"
-	"go.opentelemetry.io/otel"
 	"net/http"
 	"strconv"
 	"sync"
+
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+
+	config "github.com/m00lecule/stateful-scaling/config"
+	models "github.com/m00lecule/stateful-scaling/models"
+	log "github.com/sirupsen/logrus"
 )
 
 var tracer = otel.Tracer("gin-server")
 
 func CreateCart(c *gin.Context) {
-	var cart models.Cart
-
 	ctx := c.Request.Context()
+
+	var cart models.Cart = models.Cart{OwnedBy: config.Meta.Hostname}
 
 	log.Info("Will create new cart")
 
 	ctx, postgresSpan := tracer.Start(ctx, "postgres-create-cart")
-	
+
 	if dbc := config.DB.Create(&cart); dbc.Error != nil {
 		c.AbortWithError(500, dbc.Error)
 		return
@@ -41,17 +43,9 @@ func CreateCart(c *gin.Context) {
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
 
-	err := config.RDB.SAdd(c.Request.Context(), config.Meta.SessionMuxKey, idStr).Err()
-
-	if err != nil {
-		log.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
-		return
-	}
-
 	bytes, _ := json.Marshal(map[string]string{})
 
-	err = config.RDB.Set(c.Request.Context(), idStr, bytes, 0).Err()
+	err := config.RDB.Set(ctx, idStr, bytes, 0).Err()
 
 	if err != nil {
 		log.Error("Could not unmarshall data")
@@ -59,7 +53,7 @@ func CreateCart(c *gin.Context) {
 		return
 	}
 
-	err = config.RDB.Do(c.Request.Context(), "EXPIRE", idStr, config.Redis.TTL).Err()
+	err = config.RDB.Do(ctx, "EXPIRE", idStr, config.Redis.TTL).Err()
 
 	redisSpan.End()
 
@@ -89,8 +83,6 @@ func UpdateCart(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 		return
 	}
-
-	log.Info(cartUpdate.Details)
 
 	id := c.Param("id")
 
@@ -171,11 +163,11 @@ func GetCart(c *gin.Context) {
 
 	u64, err := strconv.ParseUint(idStr, 10, 32)
 
-    if err != nil {
-        panic(err)
-    }
+	if err != nil {
+		panic(err)
+	}
 
-    id := uint(u64)
+	id := uint(u64)
 
 	cart := models.Cart{ID: id, Content: cartDetails}
 
@@ -248,6 +240,16 @@ func SubmitCart(c *gin.Context) {
 			})
 			return
 		}
+
+		if err := tx.Model(&models.Cart{}).Where("id = ?", id).Updates(models.Cart{IsSubmitted: true}).Error; err != nil {
+			log.Error(err)
+			tx.Rollback()
+			mx.Unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
 	}
 
 	tx.Commit()
@@ -269,8 +271,6 @@ func SubmitCart(c *gin.Context) {
 	config.CartMuxMutex.Lock()
 	delete(config.CartMux, id)
 	config.CartMuxMutex.Unlock()
-
-	err = config.RDB.SRem(c.Request.Context(), config.Meta.SessionMuxKey, id).Err()
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": config.Meta,

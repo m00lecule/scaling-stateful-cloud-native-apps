@@ -1,18 +1,20 @@
 package config
 
 import (
-	"github.com/caarlos0/env/v6"
-	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync"
+
+	"github.com/caarlos0/env/v6"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	Meta *Metadata
-	MockedData string
+	Meta         *Metadata
+	MockedData   string
 	CartMuxMutex = sync.RWMutex{}
-	CartMux = map[string]*sync.Mutex{}
-) 
+	CartMux      = map[string]*sync.Mutex{}
+)
 
 type Metadata struct {
 	Hostname      string `env:"HOSTNAME" envDefault:"stateful-app"`

@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 
 	config "github.com/m00lecule/stateful-scaling/config"
 	models "github.com/m00lecule/stateful-scaling/models"
