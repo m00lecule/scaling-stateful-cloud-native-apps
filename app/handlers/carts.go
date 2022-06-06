@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -35,11 +34,7 @@ func CreateCart(c *gin.Context) {
 
 	idStr := strconv.FormatUint(uint64(cart.ID), 10)
 
-	config.CartMuxMutex.Lock()
-
-	config.CartMux[idStr] = &sync.Mutex{}
-
-	config.CartMuxMutex.Unlock()
+	config.InitMux(idStr)
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
 
@@ -85,9 +80,7 @@ func UpdateCart(c *gin.Context) {
 
 	id := c.Param("id")
 
-	config.CartMuxMutex.RLock()
-	mx := config.CartMux[id]
-	config.CartMuxMutex.RUnlock()
+	mx := config.GetMux(id)
 
 	mx.Lock()
 
@@ -183,9 +176,8 @@ func SubmitCart(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id := c.Param("id")
-	config.CartMuxMutex.RLock()
-	mx := config.CartMux[id]
-	config.CartMuxMutex.RUnlock()
+
+	mx := config.GetMux(id)
 
 	mx.Lock()
 
@@ -267,9 +259,7 @@ func SubmitCart(c *gin.Context) {
 
 	mx.Unlock()
 
-	config.CartMuxMutex.Lock()
-	delete(config.CartMux, id)
-	config.CartMuxMutex.Unlock()
+	config.DelMux(id)
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": config.Meta,
