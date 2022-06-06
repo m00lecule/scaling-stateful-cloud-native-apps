@@ -43,20 +43,20 @@ func CreateCart(c *gin.Context) {
 	err := config.RDB.Set(ctx, idStr, bytes, 0).Err()
 
 	if err != nil {
-		log.Error("Could not unmarshall data")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 		return
 	}
 
 	err = config.RDB.Do(ctx, "EXPIRE", idStr, config.Redis.TTL).Err()
 
-	redisSpan.End()
-
 	if err != nil {
-		log.Error(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 		return
 	}
+
+	// err := config.InitRedisCart(ctx, idStr)
+
+	redisSpan.End()
 
 	c.JSON(http.StatusOK, gin.H{
 		"payload":  idStr,

@@ -11,9 +11,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var (
+const (
 	cartsTableName = "carts"
 )
+
+type CartDetails struct {
+	ID          uint                      `gorm:"primaryKey"`
+	Product     Product
+	Cart	
+}
 
 type ProductDetails struct {
 	Count uint

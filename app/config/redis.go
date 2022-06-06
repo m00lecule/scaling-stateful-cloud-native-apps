@@ -36,6 +36,11 @@ func getRedisConfig() *RedisConfig {
 }
 
 func InitRedis() {
+
+	if ! Meta.isStateful {
+		return
+	}
+
 	Redis = getRedisConfig()
 
 	RDB = redis.NewClient(&redis.Options{
