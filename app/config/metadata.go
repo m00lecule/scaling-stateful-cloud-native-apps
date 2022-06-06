@@ -12,7 +12,7 @@ import (
 var (
 	Meta         *Metadata
 	MockedData   string
-	CartMuxMutex = sync.RWMutex{}
+	cartMuxMutex = sync.RWMutex{}
 	CartMux      = map[string]*sync.Mutex{}
 )
 
@@ -52,4 +52,22 @@ func InitMetadata() {
 		log.SetLevel(level)
 	}
 	MockedData = randomString(Meta.DataBytes)
+}
+
+func InitMux(id string) {
+	cartMuxMutex.Lock()
+	defer cartMuxMutex.Unlock()
+	CartMux[id] = &sync.Mutex{}
+}
+
+func GetMux(id string) *sync.Mutex {
+	cartMuxMutex.RLock()
+	defer cartMuxMutex.RUnlock()
+	return CartMux[id]
+}
+
+func DelMux(id string) {
+	cartMuxMutex.Lock()
+	defer cartMuxMutex.Unlock()
+	delete(CartMux, id)
 }
