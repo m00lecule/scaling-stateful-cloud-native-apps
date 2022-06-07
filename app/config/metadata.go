@@ -24,6 +24,13 @@ type Metadata struct {
 	IsStateful    bool   `env:"IS_STATEFUL" envDefault:"true"`
 }
 
+func GetServiceName() string {
+	if Meta.IsStateful {
+		return "stateful-app"
+	}
+	return "stateless-app"
+}
+
 func getMetadata() *Metadata {
 	m := Metadata{}
 	if err := env.Parse(&m); err != nil {

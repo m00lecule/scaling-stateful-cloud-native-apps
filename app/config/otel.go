@@ -11,7 +11,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
 )
 
-func TracerProvider() (*tracesdk.TracerProvider, error) {
+func TracerProvider(name string) (*tracesdk.TracerProvider, error) {
 	client := otlptracehttp.NewClient()
 	ctx := context.Background()
 	exp, err := otlptrace.New(ctx, client)
@@ -24,7 +24,7 @@ func TracerProvider() (*tracesdk.TracerProvider, error) {
 		tracesdk.WithBatcher(exp),
 		tracesdk.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("stateful-app"),
+			semconv.ServiceNameKey.String(name),
 		)),
 	)
 	return tp, nil

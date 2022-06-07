@@ -21,7 +21,7 @@ const (
 type CartDetails struct {
 	CartID    uint `gorm:"primaryKey"`
 	ProductID uint `gorm:"primaryKey"`
-	Count     uint `gorm:"not null; default:"0"`
+	Count     uint `gorm:"not null; default:0"`
 }
 
 type ProductDetails struct {
@@ -48,6 +48,11 @@ func (b *Cart) TableName() string {
 }
 
 func offloadCarts(ctx context.Context) (err error) {
+	if !config.Meta.IsStateful {
+		log.Info("Skipping carts offload - application is stateless")
+		return nil
+	}
+
 	iter := config.RDB.Scan(ctx, 0, "*", 0).Iterator()
 
 	var ids []uint
@@ -97,12 +102,17 @@ func offloadCarts(ctx context.Context) (err error) {
 		config.DB.Table(cartsTableName).Where(ids).Updates(Cart{IsOrphan: true})
 		log.Info("Carts offload done")
 	}
-
 	return nil
 }
 
 func initCarts() {
+	if !config.Meta.IsStateful {
+		log.Info("Skipping carts offload - application is stateless")
+		return
+	}
+
 	var carts []Cart
+
 	query := &Cart{IsOrphan: true, IsSubmitted: false, OwnedBy: config.Meta.Hostname}
 
 	if err := config.DB.Where(query).Find(&carts).Error; err != nil {
@@ -122,6 +132,26 @@ func initCarts() {
 		if err := config.DB.Save(c).Error; err != nil {
 			panic(err)
 		}
+
+		var cartDetails []CartDetails
+
+		if err := config.DB.Where("cart_id = ?", c.ID).Find(&cartDetails).Error; err != nil {
+			panic(err)
+		}
+
+		var cartProductDetails = make(map[string]ProductDetails)
+
+		for _, cd := range cartDetails {
+			cartProductDetails[id] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
+		}
+
+		bytes, _ := json.Marshal(cartProductDetails)
+
+		sec, _ := time.ParseDuration(config.Redis.TTL)
+
+		if err := config.RDB.Set(context.Background(), id, bytes, sec).Err(); err != nil {
+			panic(err)
+		}
 	}
 
 	log.Info(fmt.Sprintf("Initialized cartMux with %d entries", len(config.CartMux)))
@@ -131,7 +161,6 @@ func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, trac
 	if !config.Meta.IsStateful {
 		return nil
 	}
-
 	var cart = make(map[string]ProductDetails)
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
@@ -166,7 +195,7 @@ func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, trac
 
 	bytes, _ := json.Marshal(cart)
 
-	if err := config.RDB.Set(ctx, id, bytes, 0).Err(); err != nil {
+	if err := config.RDB.Set(ctx, id, bytes, -1).Err(); err != nil {
 		return err
 	}
 

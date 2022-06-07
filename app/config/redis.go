@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/go-redis/redis/v8"
@@ -26,7 +27,7 @@ type RedisConfig struct {
 	Host     string `env:"REDIS_HOST" envDefault:"localhost"`
 	Port     int    `env:"REDIS_PORT" envDefault:"6379"`
 	Password string `env:"REDIS_PASSWORD" envDefault:""`
-	TTL      int    `env:"REDIS_KEYS_TTL" envDefault:"120"`
+	TTL      string `env:"REDIS_KEYS_TTL" envDefault:"240s"`
 	DB       int    `env:"REDIS_DB" envDefault:"0"`
 }
 
@@ -66,11 +67,9 @@ func InitRedisCart(ctx context.Context, id string, tracer trace.Tracer) error {
 
 	bytes, _ := json.Marshal(map[string]string{})
 
-	if err := RDB.Set(ctx, id, bytes, 0).Err(); err != nil {
-		return err
-	}
+	sec, _ := time.ParseDuration(Redis.TTL)
 
-	if err := RDB.Do(ctx, "EXPIRE", id, Redis.TTL).Err(); err != nil {
+	if err := RDB.Set(ctx, id, bytes, sec).Err(); err != nil {
 		return err
 	}
 
