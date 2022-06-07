@@ -2,14 +2,14 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
 	"time"
-	"encoding/json"
 
 	"go.opentelemetry.io/otel/trace"
-	
+
 	config "github.com/m00lecule/stateful-scaling/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,9 +19,9 @@ const (
 )
 
 type CartDetails struct {
-	CartID      uint `gorm:"primaryKey"`
-	ProductID	uint `gorm:"primaryKey"`
-	Count		uint `gorm:"not null; default:"0"`
+	CartID    uint `gorm:"primaryKey"`
+	ProductID uint `gorm:"primaryKey"`
+	Count     uint `gorm:"not null; default:"0"`
 }
 
 type ProductDetails struct {
@@ -35,7 +35,7 @@ type CartUpdate struct {
 
 type Cart struct {
 	ID          uint                      `gorm:"primaryKey"`
-	Products 	[]Product				  `gorm:"many2many:cart_details;"`	
+	Products    []Product                 `gorm:"many2many:cart_details;"`
 	Content     map[string]ProductDetails `gorm:"-"`
 	IsOrphan    bool                      `gorm:"not null; type:boolean; default:false"`
 	IsSubmitted bool                      `gorm:"not null; type:boolean; default:false"`
@@ -127,11 +127,11 @@ func initCarts() {
 	log.Info(fmt.Sprintf("Initialized cartMux with %d entries", len(config.CartMux)))
 }
 
-func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, tracer trace.Tracer) error {			
-	if ! config.Meta.IsStateful {
+func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, tracer trace.Tracer) error {
+	if !config.Meta.IsStateful {
 		return nil
 	}
-	
+
 	var cart = make(map[string]ProductDetails)
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
@@ -169,11 +169,11 @@ func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, trac
 	if err := config.RDB.Set(ctx, id, bytes, 0).Err(); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
-func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUpdate, tracer trace.Tracer) error {			
+func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUpdate, tracer trace.Tracer) error {
 	if config.Meta.IsStateful {
 		return nil
 	}
@@ -184,7 +184,7 @@ func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUp
 		return err
 	}
 	cartId := uint(c64)
-	
+
 	ctx, postgresSpan := tracer.Start(ctx, "postgres")
 	defer postgresSpan.End()
 
@@ -199,7 +199,7 @@ func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUp
 		prodId := uint(u64)
 
 		cartDetails := &CartDetails{ProductID: prodId, CartID: cartId}
-		
+
 		if dbc := tx.Limit(1).Find(&cartDetails); dbc.Error != nil {
 			tx.Rollback()
 			return dbc.Error
@@ -217,6 +217,62 @@ func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUp
 		}
 	}
 	tx.Commit()
-	
+
 	return nil
+}
+
+func GetRedisCartDetails(ctx context.Context, idStr string, tracer trace.Tracer) (map[string]ProductDetails, error) {
+	if !config.Meta.IsStateful {
+		return nil, nil
+	}
+
+	var cartDetails = make(map[string]ProductDetails)
+
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+	defer redisSpan.End()
+
+	cartDetailsBytes, err := config.RDB.Get(ctx, idStr).Result()
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cartDetails, nil
+}
+
+func GetPostgresCartDetails(ctx context.Context, cartIdStr string, tracer trace.Tracer) (map[string]ProductDetails, error) {
+	if config.Meta.IsStateful {
+		return nil, nil
+	}
+
+	var productDetails = make(map[string]ProductDetails)
+
+	ctx, postgresSpan := tracer.Start(ctx, "postgres")
+	defer postgresSpan.End()
+
+	c64, err := strconv.ParseUint(cartIdStr, 10, 32)
+
+	if err != nil {
+		return nil, err
+	}
+
+	cartId := uint(c64)
+	cartDetails := []CartDetails{}
+
+	if dbc := config.DB.Where(&CartDetails{CartID: cartId}).Find(&cartDetails); dbc.Error != nil {
+		return nil, dbc.Error
+	}
+
+	for i := 0; i < len(cartDetails); i += 1 {
+		pId := strconv.FormatUint(uint64(cartDetails[i].ProductID), 10)
+		productDetails[pId] = ProductDetails{Count: cartDetails[i].Count}
+	}
+
+	return productDetails, nil
 }

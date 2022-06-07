@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -52,7 +51,7 @@ func UpdateCart(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	if err := c.BindJSON(&cartUpdate);	err != nil {
+	if err := c.BindJSON(&cartUpdate); err != nil {
 		log.Error("Could not unmarshall data")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 		return
@@ -85,19 +84,24 @@ func GetCart(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	idStr := c.Param("id")
-	ctx, redisSpan := tracer.Start(ctx, "redis")
 
-	cartDetailsBytes, err := config.RDB.Get(c.Request.Context(), idStr).Result()
-
-	redisSpan.End()
-
-	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
+	cartDetails, err := models.GetRedisCartDetails(ctx, idStr, tracer)
 
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err,
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
 			"metadata": config.Meta,
 		})
 		return
+	}
+
+	if cartDetails == nil {
+		cartDetails, err = models.GetPostgresCartDetails(ctx, idStr, tracer)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
 	}
 
 	u64, err := strconv.ParseUint(idStr, 10, 32)
@@ -128,18 +132,21 @@ func SubmitCart(c *gin.Context) {
 
 	mx.Lock()
 
-	ctx, redisSpan := tracer.Start(ctx, "redis")
-
-	cartDetailsBytes, err := config.RDB.Get(c.Request.Context(), id).Result()
-
-	redisSpan.End()
-
-	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
+	cartDetails, err := models.GetRedisCartDetails(ctx, id, tracer)
 
 	if err != nil {
 		mx.Unlock()
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
 		return
+	}
+
+	if cartDetails == nil {
+		cartDetails, err = models.GetPostgresCartDetails(ctx, id, tracer)
+		if err != nil {
+			mx.Unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+			return
+		}
 	}
 
 	ctx, postgresSpan := tracer.Start(ctx, "postgres")
@@ -194,19 +201,19 @@ func SubmitCart(c *gin.Context) {
 
 	postgresSpan.End()
 
-	_, err = config.RDB.Do(c.Request.Context(), "DEL", id).Result()
+	if config.Meta.IsStateful {
+		_, err = config.RDB.Do(c.Request.Context(), "DEL", id).Result()
 
-	if err != nil {
-		mx.Unlock()
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
-			"metadata": config.Meta,
-		})
-		return
+		if err != nil {
+			mx.Unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
 	}
 
 	mx.Unlock()
-
-	config.DelMux(id)
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": config.Meta,

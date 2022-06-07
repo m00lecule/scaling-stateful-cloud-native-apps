@@ -2,8 +2,8 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/go-redis/redis/v8"
@@ -39,7 +39,7 @@ func getRedisConfig() *RedisConfig {
 }
 
 func InitRedis() {
-	if ! Meta.IsStateful {
+	if !Meta.IsStateful {
 		log.Info("Skipping Redis client setup")
 		return
 	}
@@ -57,12 +57,13 @@ func InitRedis() {
 }
 
 func InitRedisCart(ctx context.Context, id string, tracer trace.Tracer) error {
-	if ! Meta.IsStateful {
+	if !Meta.IsStateful {
 		return nil
 	}
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
-	
+	defer redisSpan.End()
+
 	bytes, _ := json.Marshal(map[string]string{})
 
 	if err := RDB.Set(ctx, id, bytes, 0).Err(); err != nil {
@@ -72,8 +73,6 @@ func InitRedisCart(ctx context.Context, id string, tracer trace.Tracer) error {
 	if err := RDB.Do(ctx, "EXPIRE", id, Redis.TTL).Err(); err != nil {
 		return err
 	}
-
-	redisSpan.End()
 
 	return nil
 }
