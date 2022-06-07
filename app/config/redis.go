@@ -1,12 +1,15 @@
 package config
 
 import (
+	"context"
 	"fmt"
+	"encoding/json"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v8"
+	"go.opentelemetry.io/otel/trace"
 
 	redsyncredis "github.com/go-redsync/redsync/v4/redis"
 	log "github.com/sirupsen/logrus"
@@ -36,8 +39,8 @@ func getRedisConfig() *RedisConfig {
 }
 
 func InitRedis() {
-
-	if ! Meta.isStateful {
+	if ! Meta.IsStateful {
+		log.Info("Skipping Redis client setup")
 		return
 	}
 
@@ -51,4 +54,26 @@ func InitRedis() {
 
 	Pool = goredis.NewPool(RDB)
 	Rs = redsync.New(Pool)
+}
+
+func InitRedisCart(ctx context.Context, id string, tracer trace.Tracer) error {
+	if ! Meta.IsStateful {
+		return nil
+	}
+
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+	
+	bytes, _ := json.Marshal(map[string]string{})
+
+	if err := RDB.Set(ctx, id, bytes, 0).Err(); err != nil {
+		return err
+	}
+
+	if err := RDB.Do(ctx, "EXPIRE", id, Redis.TTL).Err(); err != nil {
+		return err
+	}
+
+	redisSpan.End()
+
+	return nil
 }

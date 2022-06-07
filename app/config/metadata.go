@@ -21,7 +21,7 @@ type Metadata struct {
 	LogLevel      string `env:"LOGLVL" envDefault:"info"`
 	DataBytes     int    `env:"DATABYTES" envDefault:"512"`
 	SessionMuxKey string `env:"GLOBAL_MUXNAME" envDefault:"sessions"`
-	isStateful    bool   `env:"IS_STATEFUL" envDefault:"true"`
+	IsStateful    bool   `env:"IS_STATEFUL" envDefault:"true"`
 }
 
 func getMetadata() *Metadata {
