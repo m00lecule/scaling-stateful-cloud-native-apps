@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
@@ -12,7 +12,9 @@ import (
 )
 
 func TracerProvider(name string) (*tracesdk.TracerProvider, error) {
-	client := otlptracehttp.NewClient()
+	client := otlptracegrpc.NewClient(
+		otlptracegrpc.WithInsecure(),
+	)
 	ctx := context.Background()
 	exp, err := otlptrace.New(ctx, client)
 
