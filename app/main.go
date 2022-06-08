@@ -17,7 +17,7 @@ func main() {
 	config.InitRedis()
 	models.MigrateModels()
 
-	tp, _ := config.TracerProvider()
+	tp, _ := config.TracerProvider(config.GetServiceName())
 
 	otel.SetTracerProvider(tp)
 

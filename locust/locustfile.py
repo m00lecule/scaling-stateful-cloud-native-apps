@@ -3,13 +3,10 @@ import os
 import random
 import time
 import uuid
-import json
 
 import requests
 
 from locust import HttpUser, between, events, task
-
-from locust.clients import HttpSession
 
 TESTS_ID = uuid.uuid4()
 
@@ -30,11 +27,10 @@ MAX_COUNT = 12
 def on_test_start(environment, **kwargs):
     host = environment.host
     logging.info("STARTING STATEFUL-APP STRESS TESTS - %s", TESTS_ID)
-    logging.info("STARTING SEEDING DATA")
     for p in PRODUCTS_DATA:
-        logging.info("processing %s", p["name"])
+        logging.debug("processing %s", p["name"])
         r = requests.post(url = f"{host}/products", json = p)
-        logging.info("response %d", r.status_code)
+        logging.debug("response %d", r.status_code)
         data = r.json()
         PRODUCTS_STOCKS[data["payload"]["ID"]] = data["payload"]["Stock"]
     logging.info("COMPLETED DATA SEEDING")
@@ -42,12 +38,11 @@ def on_test_start(environment, **kwargs):
 
 @events.quitting.add_listener
 def _(environment, **_kwargs):
-    logging.info("WILL REMOVE SEEDED DATA")
     host = environment.host
     for p in PRODUCTS_STOCKS.keys():
-        logging.info("processing %s", p)
+        logging.debug("processing %s", p)
         r = requests.delete(url = f"{host}/products/{p}")
-        logging.info("response %d", r.status_code)
+        logging.debug("Resp %d", r.status_code)
     logging.info("REMOVED SEEDED DATA")
 
 class AppUser(HttpUser):
@@ -76,13 +71,11 @@ class AppUser(HttpUser):
 
                 orders_done[product_id] = count + product_count
 
-                print(product_id, orders_done[product_id])
+                response = self.client.patch(f"/carts/{cart_id}", name="/carts/:id", json=data)
 
-                response = self.client.patch(f"/carts/{cart_id}", name="/carts", json=data)
+                logging.debug("Order: %d", response.status_code)
 
-                logging.info("Order resp code: %d", response.status_code)
-
-                response = self.client.get(f"/carts/{cart_id}")
+                response = self.client.get(f"/carts/{cart_id}", name="/carts/:id")
 
                 curr_cart = response.json()["payload"]["Content"]
                 
@@ -91,10 +84,8 @@ class AppUser(HttpUser):
 
                 time.sleep(3)
 
-            response = self.client.post(f"/carts/{cart_id}/submit")
-            logging.info("Submit resp code: %s", response.status_code)
-
-            logging.info("ordered %s - %s", cart_id, json.dumps(orders_done))
+            response = self.client.post(f"/carts/{cart_id}/submit", name="/carts/:id/submit")
+            logging.debug("Submit: %s", response.status_code)
             self.client.cookies.clear()
 
         while INF_WAIT:

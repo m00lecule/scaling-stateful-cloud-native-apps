@@ -18,6 +18,10 @@ func AddProduct(p *Product) (err error) {
 }
 
 func DelProduct(p *Product) (err error) {
+	if err = config.DB.Where("product_id = ?", p.ID).Delete(&CartDetails{}).Error; err != nil {
+		return err
+	}
+
 	if err = config.DB.Delete(p).Error; err != nil {
 		return err
 	}

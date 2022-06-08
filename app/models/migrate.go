@@ -10,7 +10,7 @@ import (
 
 func MigrateModels() {
 	var DB = config.DB
-	DB.AutoMigrate(&Product{}, &Cart{})
+	DB.AutoMigrate(&Product{}, &Cart{}, &CartDetails{})
 	DB.Migrator().CreateConstraint(&Product{}, "possitive_stock")
 
 	initCarts()

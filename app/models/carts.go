@@ -2,18 +2,27 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	config "github.com/m00lecule/stateful-scaling/config"
 	log "github.com/sirupsen/logrus"
 )
 
-var (
+const (
 	cartsTableName = "carts"
 )
+
+type CartDetails struct {
+	CartID    uint `gorm:"primaryKey"`
+	ProductID uint `gorm:"primaryKey"`
+	Count     uint `gorm:"not null; default:0"`
+}
 
 type ProductDetails struct {
 	Count uint
@@ -26,6 +35,7 @@ type CartUpdate struct {
 
 type Cart struct {
 	ID          uint                      `gorm:"primaryKey"`
+	Products    []Product                 `gorm:"many2many:cart_details;"`
 	Content     map[string]ProductDetails `gorm:"-"`
 	IsOrphan    bool                      `gorm:"not null; type:boolean; default:false"`
 	IsSubmitted bool                      `gorm:"not null; type:boolean; default:false"`
@@ -38,6 +48,11 @@ func (b *Cart) TableName() string {
 }
 
 func offloadCarts(ctx context.Context) (err error) {
+	if !config.Meta.IsStateful {
+		log.Info("Skipping carts offload - application is stateless")
+		return nil
+	}
+
 	iter := config.RDB.Scan(ctx, 0, "*", 0).Iterator()
 
 	var ids []uint
@@ -87,12 +102,17 @@ func offloadCarts(ctx context.Context) (err error) {
 		config.DB.Table(cartsTableName).Where(ids).Updates(Cart{IsOrphan: true})
 		log.Info("Carts offload done")
 	}
-
 	return nil
 }
 
 func initCarts() {
+	if !config.Meta.IsStateful {
+		log.Info("Skipping carts offload - application is stateless")
+		return
+	}
+
 	var carts []Cart
+
 	query := &Cart{IsOrphan: true, IsSubmitted: false, OwnedBy: config.Meta.Hostname}
 
 	if err := config.DB.Where(query).Find(&carts).Error; err != nil {
@@ -112,7 +132,176 @@ func initCarts() {
 		if err := config.DB.Save(c).Error; err != nil {
 			panic(err)
 		}
+
+		var cartDetails []CartDetails
+
+		if err := config.DB.Where("cart_id = ?", c.ID).Find(&cartDetails).Error; err != nil {
+			panic(err)
+		}
+
+		var cartProductDetails = make(map[string]ProductDetails)
+
+		for _, cd := range cartDetails {
+			cartProductDetails[id] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
+		}
+
+		bytes, _ := json.Marshal(cartProductDetails)
+
+		sec, _ := time.ParseDuration(config.Redis.TTL)
+
+		if err := config.RDB.Set(context.Background(), id, bytes, sec).Err(); err != nil {
+			panic(err)
+		}
 	}
 
 	log.Info(fmt.Sprintf("Initialized cartMux with %d entries", len(config.CartMux)))
+}
+
+func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, tracer trace.Tracer) error {
+	if !config.Meta.IsStateful {
+		return nil
+	}
+	var cart = make(map[string]ProductDetails)
+
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+	defer redisSpan.End()
+
+	currentCartBytes, _ := config.RDB.Get(ctx, id).Result()
+
+	_ = json.Unmarshal([]byte(currentCartBytes), &cart)
+
+	for id, delta := range cartUpdate.Details {
+		if value, ok := cart[id]; ok {
+			value.Count = value.Count + delta
+
+			data := []string{}
+
+			for i := uint(0); i < value.Count; i++ {
+				data = append(data, config.MockedData)
+			}
+
+			value.Data = data
+			cart[id] = value
+		} else {
+			data := []string{}
+
+			for i := uint(0); i < delta; i++ {
+				data = append(data, config.MockedData)
+			}
+
+			cart[id] = ProductDetails{Count: delta, Data: data}
+		}
+	}
+
+	bytes, _ := json.Marshal(cart)
+
+	if err := config.RDB.Set(ctx, id, bytes, -1).Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUpdate, tracer trace.Tracer) error {
+	if config.Meta.IsStateful {
+		return nil
+	}
+
+	c64, err := strconv.ParseUint(cartIdStr, 10, 32)
+
+	if err != nil {
+		return err
+	}
+	cartId := uint(c64)
+
+	ctx, postgresSpan := tracer.Start(ctx, "postgres")
+	defer postgresSpan.End()
+
+	tx := config.DB.Begin()
+
+	for prodIdStr, delta := range cartUpdate.Details {
+		u64, err := strconv.ParseUint(prodIdStr, 10, 32)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		prodId := uint(u64)
+
+		cartDetails := &CartDetails{ProductID: prodId, CartID: cartId}
+
+		if dbc := tx.Limit(1).Find(&cartDetails); dbc.Error != nil {
+			tx.Rollback()
+			return dbc.Error
+		} else {
+			if dbc.RowsAffected > 0 {
+				cartDetails.Count = cartDetails.Count + delta
+			} else {
+				cartDetails.Count = delta
+			}
+		}
+
+		if dbc := tx.Save(&cartDetails); dbc.Error != nil {
+			tx.Rollback()
+			return dbc.Error
+		}
+	}
+	tx.Commit()
+
+	return nil
+}
+
+func GetRedisCartDetails(ctx context.Context, idStr string, tracer trace.Tracer) (map[string]ProductDetails, error) {
+	if !config.Meta.IsStateful {
+		return nil, nil
+	}
+
+	var cartDetails = make(map[string]ProductDetails)
+
+	ctx, redisSpan := tracer.Start(ctx, "redis")
+	defer redisSpan.End()
+
+	cartDetailsBytes, err := config.RDB.Get(ctx, idStr).Result()
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cartDetails, nil
+}
+
+func GetPostgresCartDetails(ctx context.Context, cartIdStr string, tracer trace.Tracer) (map[string]ProductDetails, error) {
+	if config.Meta.IsStateful {
+		return nil, nil
+	}
+
+	var productDetails = make(map[string]ProductDetails)
+
+	ctx, postgresSpan := tracer.Start(ctx, "postgres")
+	defer postgresSpan.End()
+
+	c64, err := strconv.ParseUint(cartIdStr, 10, 32)
+
+	if err != nil {
+		return nil, err
+	}
+
+	cartId := uint(c64)
+	cartDetails := []CartDetails{}
+
+	if dbc := config.DB.Where(&CartDetails{CartID: cartId}).Find(&cartDetails); dbc.Error != nil {
+		return nil, dbc.Error
+	}
+
+	for i := 0; i < len(cartDetails); i += 1 {
+		pId := strconv.FormatUint(uint64(cartDetails[i].ProductID), 10)
+		productDetails[pId] = ProductDetails{Count: cartDetails[i].Count}
+	}
+
+	return productDetails, nil
 }

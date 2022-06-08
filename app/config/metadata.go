@@ -21,6 +21,14 @@ type Metadata struct {
 	LogLevel      string `env:"LOGLVL" envDefault:"info"`
 	DataBytes     int    `env:"DATABYTES" envDefault:"512"`
 	SessionMuxKey string `env:"GLOBAL_MUXNAME" envDefault:"sessions"`
+	IsStateful    bool   `env:"IS_STATEFUL" envDefault:"true"`
+}
+
+func GetServiceName() string {
+	if Meta.IsStateful {
+		return "stateful-app"
+	}
+	return "stateless-app"
 }
 
 func getMetadata() *Metadata {

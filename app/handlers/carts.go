@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -32,47 +31,29 @@ func CreateCart(c *gin.Context) {
 
 	postgresSpan.End()
 
-	idStr := strconv.FormatUint(uint64(cart.ID), 10)
+	if config.Meta.IsStateful {
+		idStr := strconv.FormatUint(uint64(cart.ID), 10)
 
-	config.InitMux(idStr)
+		config.InitMux(idStr)
 
-	ctx, redisSpan := tracer.Start(ctx, "redis")
-
-	bytes, _ := json.Marshal(map[string]string{})
-
-	err := config.RDB.Set(ctx, idStr, bytes, 0).Err()
-
-	if err != nil {
-		log.Error("Could not unmarshall data")
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
-		return
-	}
-
-	err = config.RDB.Do(ctx, "EXPIRE", idStr, config.Redis.TTL).Err()
-
-	redisSpan.End()
-
-	if err != nil {
-		log.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
-		return
+		if err := config.InitRedisCart(ctx, idStr, tracer); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"payload":  idStr,
+		"payload":  cart.ID,
 		"metadata": config.Meta,
 	})
 }
 
 func UpdateCart(c *gin.Context) {
-	var cart = make(map[string]models.ProductDetails)
 	var cartUpdate models.CartUpdate
 
 	ctx := c.Request.Context()
 
-	err := c.BindJSON(&cartUpdate)
-
-	if err != nil {
+	if err := c.BindJSON(&cartUpdate); err != nil {
 		log.Error("Could not unmarshall data")
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 		return
@@ -80,77 +61,51 @@ func UpdateCart(c *gin.Context) {
 
 	id := c.Param("id")
 
-	mx := config.GetMux(id)
+	if config.Meta.IsStateful {
+		mx := config.GetMux(id)
+		mx.Lock()
+		defer mx.Unlock()
 
-	mx.Lock()
-
-	currentCartBytes, err := config.RDB.Get(c.Request.Context(), id).Result()
-
-	err = json.Unmarshal([]byte(currentCartBytes), &cart)
-
-	for id, delta := range cartUpdate.Details {
-		log.Debug(id, " - ", delta)
-		if value, ok := cart[id]; ok {
-			value.Count = value.Count + delta
-
-			data := []string{}
-
-			for i := uint(0); i < value.Count; i++ {
-				data = append(data, config.MockedData)
-			}
-
-			value.Data = data
-			cart[id] = value
-		} else {
-			data := []string{}
-
-			for i := uint(0); i < delta; i++ {
-				data = append(data, config.MockedData)
-			}
-
-			cart[id] = models.ProductDetails{Count: delta, Data: data}
+		if err := models.UpdateRedisCart(ctx, id, cartUpdate, tracer); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
+			return
 		}
-	}
-
-	bytes, err := json.Marshal(cart)
-
-	ctx, redisSpan := tracer.Start(ctx, "redis")
-
-	err = config.RDB.Set(c.Request.Context(), id, bytes, 0).Err()
-
-	redisSpan.End()
-
-	if err != nil {
-		log.Warn("Could not connect to redis")
-		mx.Unlock()
-		panic(err)
+	} else {
+		if err := models.UpdatePostgresCart(ctx, id, cartUpdate, tracer); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": config.Meta,
 	})
-
-	mx.Unlock()
 }
 
 func GetCart(c *gin.Context) {
-	var cartDetails = make(map[string]models.ProductDetails)
+	var cartDetails map[string]models.ProductDetails
+	var err error
 
 	ctx := c.Request.Context()
 	idStr := c.Param("id")
-	ctx, redisSpan := tracer.Start(ctx, "redis")
 
-	cartDetailsBytes, err := config.RDB.Get(c.Request.Context(), idStr).Result()
+	if config.Meta.IsStateful {
+		cartDetails, err = models.GetRedisCartDetails(ctx, idStr, tracer)
 
-	redisSpan.End()
-
-	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
-
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err,
-			"metadata": config.Meta,
-		})
-		return
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
+	} else {
+		cartDetails, err = models.GetPostgresCartDetails(ctx, idStr, tracer)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
 	}
 
 	u64, err := strconv.ParseUint(idStr, 10, 32)
@@ -170,29 +125,33 @@ func GetCart(c *gin.Context) {
 }
 
 func SubmitCart(c *gin.Context) {
-	var cartDetails = make(map[string]models.ProductDetails)
+	var cartDetails map[string]models.ProductDetails
 	var p models.Product
+	var err error
 
 	ctx := c.Request.Context()
 
 	id := c.Param("id")
 
-	mx := config.GetMux(id)
+	if config.Meta.IsStateful {
+		mx := config.GetMux(id)
+		mx.Lock()
+		defer mx.Unlock()
 
-	mx.Lock()
+		cartDetails, err = models.GetRedisCartDetails(ctx, id, tracer)
 
-	ctx, redisSpan := tracer.Start(ctx, "redis")
+		if err != nil {
+			mx.Unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+			return
+		}
 
-	cartDetailsBytes, err := config.RDB.Get(c.Request.Context(), id).Result()
-
-	redisSpan.End()
-
-	err = json.Unmarshal([]byte(cartDetailsBytes), &cartDetails)
-
-	if err != nil {
-		mx.Unlock()
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		return
+	} else {
+		cartDetails, err = models.GetPostgresCartDetails(ctx, id, tracer)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+			return
+		}
 	}
 
 	ctx, postgresSpan := tracer.Start(ctx, "postgres")
@@ -203,7 +162,6 @@ func SubmitCart(c *gin.Context) {
 		p = models.Product{}
 		if err = tx.Where("id = ?", k).First(&p).Error; err != nil {
 			tx.Rollback()
-			mx.Unlock()
 			c.JSON(400, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
@@ -212,9 +170,8 @@ func SubmitCart(c *gin.Context) {
 
 		if p.Stock < v.Count {
 			msg := fmt.Sprintf("Product %s [%d] Stock [%d] is lower than request [%d]", p.Name, p.ID, p.Stock, v.Count)
-			log.Debug(msg)
+			log.Warn(msg)
 			tx.Rollback()
-			mx.Unlock()
 			c.JSON(444, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
@@ -223,9 +180,7 @@ func SubmitCart(c *gin.Context) {
 		p.Stock -= v.Count
 
 		if err = tx.Save(p).Error; err != nil {
-			log.Error(err)
 			tx.Rollback()
-			mx.Unlock()
 			c.JSON(400, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
@@ -233,9 +188,7 @@ func SubmitCart(c *gin.Context) {
 		}
 
 		if err := tx.Model(&models.Cart{}).Where("id = ?", id).Updates(models.Cart{IsSubmitted: true}).Error; err != nil {
-			log.Error(err)
 			tx.Rollback()
-			mx.Unlock()
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
@@ -247,19 +200,18 @@ func SubmitCart(c *gin.Context) {
 
 	postgresSpan.End()
 
-	_, err = config.RDB.Do(c.Request.Context(), "DEL", id).Result()
+	if config.Meta.IsStateful {
+		_, err = config.RDB.Do(c.Request.Context(), "DEL", id).Result()
 
-	if err != nil {
-		mx.Unlock()
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
-			"metadata": config.Meta,
-		})
-		return
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+			})
+			return
+		}
+
+		config.DelMux(id)
 	}
-
-	mx.Unlock()
-
-	config.DelMux(id)
 
 	c.JSON(http.StatusOK, gin.H{
 		"metadata": config.Meta,
