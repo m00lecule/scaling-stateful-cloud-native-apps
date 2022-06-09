@@ -89,9 +89,8 @@ spec:
           httpGet:
             path: /health
             port: 8080
-          initialDelaySeconds: 5
+          initialDelaySeconds: 2
           timeoutSeconds: 10
-          periodSeconds: 5
         resources:
           limits:
             cpu: 200m
@@ -112,7 +111,7 @@ spec:
         readinessProbe:
           tcpSocket:
             port: 6379
-          initialDelaySeconds: 30
+          initialDelaySeconds: 2
           timeoutSeconds: 5
         resources:
           limits:
