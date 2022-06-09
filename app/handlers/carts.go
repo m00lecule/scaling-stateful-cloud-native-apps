@@ -92,13 +92,25 @@ func GetCart(c *gin.Context) {
 	if config.Meta.IsStateful {
 		cartDetails, err = models.GetRedisCartDetails(ctx, idStr, tracer)
 
-		if err != nil {
+		if fmt.Sprint(err) == "redis: nil" {
+			if cart, err := models.TakeOverPostgresCart(ctx, idStr, tracer); err == nil {
+				models.InitCart(cart)
+				cartDetails, err = models.GetRedisCartDetails(ctx, idStr, tracer)
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+				"metadata": config.Meta,
+				})
+				return
+			}
+		} else if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
 			return
 		}
-	} else {
+	}
+	
+	if !config.Meta.IsStateful {
 		cartDetails, err = models.GetPostgresCartDetails(ctx, idStr, tracer)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,

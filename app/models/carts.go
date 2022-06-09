@@ -122,34 +122,7 @@ func initCarts() {
 	log.Info(fmt.Sprintf("Found %d orphaned carts", len(carts)))
 
 	for _, c := range carts {
-		log.Info(c.ID)
-
-		id := strconv.FormatUint(uint64(c.ID), 10)
-		config.CartMux[id] = &sync.Mutex{}
-
-		c.IsOrphan = false
-
-		if err := config.DB.Save(c).Error; err != nil {
-			panic(err)
-		}
-
-		var cartDetails []CartDetails
-
-		if err := config.DB.Where("cart_id = ?", c.ID).Find(&cartDetails).Error; err != nil {
-			panic(err)
-		}
-
-		var cartProductDetails = make(map[string]ProductDetails)
-
-		for _, cd := range cartDetails {
-			cartProductDetails[id] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
-		}
-
-		bytes, _ := json.Marshal(cartProductDetails)
-
-		sec, _ := time.ParseDuration(config.Redis.TTL)
-
-		if err := config.RDB.Set(context.Background(), id, bytes, sec).Err(); err != nil {
+		if err := InitCart(&c); err != nil {
 			panic(err)
 		}
 	}
@@ -157,10 +130,42 @@ func initCarts() {
 	log.Info(fmt.Sprintf("Initialized cartMux with %d entries", len(config.CartMux)))
 }
 
+func InitCart(c *Cart) error {
+	id := strconv.FormatUint(uint64(c.ID), 10)
+	config.CartMux[id] = &sync.Mutex{}
+
+	c.IsOrphan = false
+
+	if err := config.DB.Save(c).Error; err != nil {
+		return err
+	}
+
+	var cartDetails []CartDetails
+
+	if err := config.DB.Where("cart_id = ?", c.ID).Find(&cartDetails).Error; err != nil {
+		return err
+	}
+
+	var cartProductDetails = make(map[string]ProductDetails)
+
+	for _, cd := range cartDetails {
+		cartProductDetails[id] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
+	}
+
+	bytes, _ := json.Marshal(cartProductDetails)
+
+	sec, _ := time.ParseDuration(config.Redis.TTL)
+
+	if err := config.RDB.Set(context.Background(), id, bytes, sec).Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, tracer trace.Tracer) error {
 	if !config.Meta.IsStateful {
 		return nil
-	}
+	}	
 	var cart = make(map[string]ProductDetails)
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
@@ -168,7 +173,9 @@ func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, trac
 
 	currentCartBytes, _ := config.RDB.Get(ctx, id).Result()
 
-	_ = json.Unmarshal([]byte(currentCartBytes), &cart)
+	if err := json.Unmarshal([]byte(currentCartBytes), &cart); err != nil || cart == nil {
+		return err
+	}
 
 	for id, delta := range cartUpdate.Details {
 		if value, ok := cart[id]; ok {
@@ -248,6 +255,39 @@ func UpdatePostgresCart(ctx context.Context, cartIdStr string, cartUpdate CartUp
 	tx.Commit()
 
 	return nil
+}
+
+func TakeOverPostgresCart(ctx context.Context, cartIdStr string, tracer trace.Tracer) (*Cart, error) {
+	c64, err := strconv.ParseUint(cartIdStr, 10, 32)
+
+	if err != nil {
+		return nil, err
+	}
+
+	cartId := uint(c64)
+
+	ctx, postgresSpan := tracer.Start(ctx, "postgres")
+	defer postgresSpan.End()
+
+	tx := config.DB.Begin()
+
+	cart := &Cart{}
+
+	if dbc := tx.Where(&Cart{ID: cartId, IsOrphan: true, IsSubmitted: false}).Find(&cart); dbc.Error != nil || dbc.RowsAffected < 1 {
+		tx.Rollback()
+		return nil, dbc.Error
+	}
+
+	cart.OwnedBy = config.Meta.Hostname
+
+	if dbc := tx.Save(&cart); dbc.Error != nil {
+		tx.Rollback()
+		return nil, dbc.Error
+	}
+
+	tx.Commit()
+
+	return cart, nil
 }
 
 func GetRedisCartDetails(ctx context.Context, idStr string, tracer trace.Tracer) (map[string]ProductDetails, error) {
