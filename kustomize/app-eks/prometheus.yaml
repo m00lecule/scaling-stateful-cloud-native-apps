@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - args:
+            - --config.file=/etc/prometheus.yaml
+          image: prom/prometheus:latest
+          name: prometheus
+          ports:
+            - containerPort: 9090
+            - containerPort: 8889
+          resources:
+            limits:
+              cpu: 800m
+              memory: 2Gi
+            requests:
+              cpu: 800m
+              memory: 2Gi
+          volumeMounts:
+          - name: prometheus
+            mountPath: /etc/prometheus.yaml
+            subPath: prometheus.yaml
+      volumes:
+        - name: prometheus
+          configMap:
+            name: prometheus
+      restartPolicy: Always
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+spec:
+  ports:
+    - name: "9090"
+      port: 9090
+      targetPort: 9090
+    - name: "8889"
+      port: 8889
+      targetPort: 8889
+  selector:
+    app: prometheus
