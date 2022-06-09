@@ -33,6 +33,13 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /data
+          resources:
+            limits:
+              cpu: 400m
+              memory: 800Mi
+            requests:
+              cpu: 400m
+              memory: 800Mi
           envFrom:
             - configMapRef:
                 name: postgres-configmap
