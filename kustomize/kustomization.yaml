@@ -13,10 +13,22 @@ configMapGenerator:
 - name: postgres-configmap
   envs:
   - postgres/.env
-
+- name: jaeger
+  files:
+  - configs/jaeger-ui.json
+- name: otel-collector
+  files:
+  - configs/otel-collector.yaml
+- name: prometheus
+  files:
+  - configs/prometheus.yaml
+  
 resources:
   - namespace.yaml
   - app-eks/bundle.yaml
+  - app-eks/jaeger.yaml
+  - app-eks/prometheus.yaml
+  - app-eks/otel-collector.yaml
   - postgres/bundle.yaml
 
 images:
@@ -29,4 +41,3 @@ images:
   - name: app
     newName: localhost:5000/stateful-app
     newTag: '6.0'
-
