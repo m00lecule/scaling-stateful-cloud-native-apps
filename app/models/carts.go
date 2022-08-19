@@ -56,6 +56,7 @@ func offloadCarts(ctx context.Context) (err error) {
 	iter := config.RDB.Scan(ctx, 0, "*", 0).Iterator()
 
 	var ids []uint
+	var idsStr []string
 
 	for iter.Next(ctx) {
 		idStr := iter.Val()
@@ -80,6 +81,8 @@ func offloadCarts(ctx context.Context) (err error) {
 
 		u64, err := strconv.ParseUint(idStr, 10, 32)
 
+		idsStr = append(idsStr, idStr)
+
 		if err != nil {
 			log.Error(err)
 			continue
@@ -96,11 +99,64 @@ func offloadCarts(ctx context.Context) (err error) {
 		panic(err)
 	}
 
-	log.Info(fmt.Sprintf("Will try to offload %d models", len(ids)))
+	log.Info(fmt.Sprintf("Will try to offload %d carts", len(ids)))
 
 	if len(ids) > 0 {
 		config.DB.Table(cartsTableName).Where(ids).Updates(Cart{IsOrphan: true})
+
 		log.Info("Carts offload done")
+	}
+
+	for _, sid := range idsStr {
+		log.Info(fmt.Sprintf("Will try to offload cart %s", sid))
+
+		if productsDetails, err := GetRedisCartDetails(ctx, sid, config.Tracer); err == nil {
+			log.Info(fmt.Sprintf("Will try to offload %d products for cart %s", len(productsDetails), sid))
+
+			for k, pd := range productsDetails {
+
+				log.Info(fmt.Sprintf("Will try to offload product %s for cart %s", k, sid))
+
+				pu64, err := strconv.ParseUint(k, 10, 32)
+
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+
+				cu64, err := strconv.ParseUint(sid, 10, 32)
+
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+
+				productID := uint(pu64)
+				cartID := uint(cu64)
+
+				if dbc := config.DB.Save(&CartDetails{CartID: cartID, ProductID: productID, Count: pd.Count}); dbc.Error != nil {
+					log.Error("Had issues during data perstance during graceful shutdown")
+					return nil
+				}
+			}
+		} else {
+			log.Error(err)
+			return nil
+		}
+	}
+	return nil
+}
+
+func ReadCartMux(ctx context.Context, idStr string, tracer trace.Tracer) *sync.Mutex {
+	if mx := config.GetMux(idStr); mx == nil {
+		log.Info(fmt.Sprintf("Will try to onload cart %s", idStr))
+		if cart, err := TakeOverPostgresCart(ctx, idStr, tracer); err == nil && cart != nil {
+			InitCart(ctx, cart)
+			log.Info(fmt.Sprintf("Onloaded cart %s", idStr))
+			return config.GetMux(idStr)
+		}
+	} else {
+		return mx
 	}
 	return nil
 }
@@ -122,7 +178,7 @@ func initCarts() {
 	log.Info(fmt.Sprintf("Found %d orphaned carts", len(carts)))
 
 	for _, c := range carts {
-		if err := InitCart(&c); err != nil {
+		if err := InitCart(context.Background(), &c); err != nil {
 			panic(err)
 		}
 	}
@@ -130,9 +186,15 @@ func initCarts() {
 	log.Info(fmt.Sprintf("Initialized cartMux with %d entries", len(config.CartMux)))
 }
 
-func InitCart(c *Cart) error {
+func InitCart(ctx context.Context, c *Cart) error {
 	id := strconv.FormatUint(uint64(c.ID), 10)
-	config.CartMux[id] = &sync.Mutex{}
+
+	config.InitMux(id)
+
+	mx := config.GetMux(id)
+
+	mx.Lock()
+	defer mx.Unlock()
 
 	c.IsOrphan = false
 
@@ -149,23 +211,28 @@ func InitCart(c *Cart) error {
 	var cartProductDetails = make(map[string]ProductDetails)
 
 	for _, cd := range cartDetails {
-		cartProductDetails[id] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
+		cartProductDetails[strconv.FormatUint(uint64(cd.ProductID), 10)] = ProductDetails{Count: cd.Count, Data: []string{config.MockedData}}
 	}
 
 	bytes, _ := json.Marshal(cartProductDetails)
 
 	sec, _ := time.ParseDuration(config.Redis.TTL)
 
-	if err := config.RDB.Set(context.Background(), id, bytes, sec).Err(); err != nil {
+	if err := config.RDB.Set(ctx, id, bytes, sec).Err(); err != nil {
 		return err
 	}
+
+	if err := config.DB.WithContext(ctx).Where("cart_id = ?", c.ID).Delete(&cartDetails).Error; err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func UpdateRedisCart(ctx context.Context, id string, cartUpdate CartUpdate, tracer trace.Tracer) error {
 	if !config.Meta.IsStateful {
 		return nil
-	}	
+	}
 	var cart = make(map[string]ProductDetails)
 
 	ctx, redisSpan := tracer.Start(ctx, "redis")
@@ -334,7 +401,7 @@ func GetPostgresCartDetails(ctx context.Context, cartIdStr string, tracer trace.
 	cartId := uint(c64)
 	cartDetails := []CartDetails{}
 
-	if dbc := config.DB.Where(&CartDetails{CartID: cartId}).Find(&cartDetails); dbc.Error != nil {
+	if dbc := config.DB.WithContext(ctx).Where(&CartDetails{CartID: cartId}).Find(&cartDetails); dbc.Error != nil {
 		return nil, dbc.Error
 	}
 

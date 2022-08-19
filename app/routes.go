@@ -51,7 +51,7 @@ func serverGracefulShutdown(srv *http.Server) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
-	log.Println("Shutdown Server ...")
+	log.Info("Shutdown Server ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -60,5 +60,5 @@ func serverGracefulShutdown(srv *http.Server) {
 	}
 
 	models.OffloadModels(ctx)
-	log.Info("Server exiting")
+	log.Info("Server shutdown finished")
 }
