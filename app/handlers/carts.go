@@ -6,14 +6,11 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel"
 
 	config "github.com/m00lecule/stateful-scaling/config"
 	models "github.com/m00lecule/stateful-scaling/models"
 	log "github.com/sirupsen/logrus"
 )
-
-var tracer = otel.Tracer("gin-server")
 
 func CreateCart(c *gin.Context) {
 	var cart models.Cart = models.Cart{OwnedBy: config.Meta.Hostname}
@@ -22,7 +19,7 @@ func CreateCart(c *gin.Context) {
 
 	log.Info("Will create new cart")
 
-	ctx, postgresSpan := tracer.Start(ctx, "postgres-create-cart")
+	ctx, postgresSpan := config.Tracer.Start(ctx, "postgres-create-cart")
 
 	if dbc := config.DB.Create(&cart); dbc.Error != nil {
 		c.AbortWithError(500, dbc.Error)
@@ -36,7 +33,7 @@ func CreateCart(c *gin.Context) {
 
 		config.InitMux(idStr)
 
-		if err := config.InitRedisCart(ctx, idStr, tracer); err != nil {
+		if err := config.InitRedisCart(ctx, idStr, config.Tracer); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 			return
 		}
@@ -62,16 +59,16 @@ func UpdateCart(c *gin.Context) {
 	id := c.Param("id")
 
 	if config.Meta.IsStateful {
-		mx := config.GetMux(id)
+		mx := models.ReadCartMux(ctx, id, config.Tracer)
 		mx.Lock()
 		defer mx.Unlock()
 
-		if err := models.UpdateRedisCart(ctx, id, cartUpdate, tracer); err != nil {
+		if err := models.UpdateRedisCart(ctx, id, cartUpdate, config.Tracer); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 			return
 		}
 	} else {
-		if err := models.UpdatePostgresCart(ctx, id, cartUpdate, tracer); err != nil {
+		if err := models.UpdatePostgresCart(ctx, id, cartUpdate, config.Tracer); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err, "metadata": config.Meta})
 			return
 		}
@@ -90,16 +87,36 @@ func GetCart(c *gin.Context) {
 	idStr := c.Param("id")
 
 	if config.Meta.IsStateful {
-		cartDetails, err = models.GetRedisCartDetails(ctx, idStr, tracer)
+		cartDetails, err = models.GetRedisCartDetails(ctx, idStr, config.Tracer)
 
-		if err != nil {
+		if fmt.Sprint(err) == "redis: nil" {
+			log.Info(fmt.Sprintf("Will try to takeover cart %s", idStr))
+			if cart, err := models.TakeOverPostgresCart(ctx, idStr, config.Tracer); err == nil {
+				if err = models.InitCart(ctx, cart); err != nil {
+					log.Error("Found issues during cart initialization")
+					c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+						"metadata": config.Meta,
+					})
+					return
+				}
+				log.Info(fmt.Sprintf("Onloaded cart %s", idStr))
+				cartDetails, err = models.GetRedisCartDetails(ctx, idStr, config.Tracer)
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
+					"metadata": config.Meta,
+				})
+				return
+			}
+		} else if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
 				"metadata": config.Meta,
 			})
 			return
 		}
-	} else {
-		cartDetails, err = models.GetPostgresCartDetails(ctx, idStr, tracer)
+	}
+
+	if !config.Meta.IsStateful {
+		cartDetails, err = models.GetPostgresCartDetails(ctx, idStr, config.Tracer)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err,
 				"metadata": config.Meta,
@@ -138,7 +155,7 @@ func SubmitCart(c *gin.Context) {
 		mx.Lock()
 		defer mx.Unlock()
 
-		cartDetails, err = models.GetRedisCartDetails(ctx, id, tracer)
+		cartDetails, err = models.GetRedisCartDetails(ctx, id, config.Tracer)
 
 		if err != nil {
 			mx.Unlock()
@@ -147,14 +164,14 @@ func SubmitCart(c *gin.Context) {
 		}
 
 	} else {
-		cartDetails, err = models.GetPostgresCartDetails(ctx, id, tracer)
+		cartDetails, err = models.GetPostgresCartDetails(ctx, id, config.Tracer)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
 			return
 		}
 	}
 
-	ctx, postgresSpan := tracer.Start(ctx, "postgres")
+	ctx, postgresSpan := config.Tracer.Start(ctx, "postgres")
 
 	tx := config.DB.Begin()
 
