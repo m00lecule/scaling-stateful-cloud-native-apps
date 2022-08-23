@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,23 +43,32 @@ func runServer(router *gin.Engine) {
 }
 
 func serverGracefulShutdown(srv *http.Server) {
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-	<-quit
-	log.Info("Shutdown Server ...")
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("caught sig: %+v", sig)
+	log.Println("Shutdown Server ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server Shutdown:", err)
 	}
+	select {
+	case <-ctx.Done():
+		log.Println("timeout of 5 seconds.")
+	}
 
-	models.OffloadModels(ctx)
-	log.Info("Server shutdown finished")
+	ctxOffload, cancelModels := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelModels()
+
+	models.OffloadModels(ctxOffload)
+	log.Println("Server exiting")
 }
